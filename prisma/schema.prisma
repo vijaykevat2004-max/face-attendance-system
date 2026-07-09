@@ -1,0 +1,131 @@
+// AI-Based Face Recognition Attendance & Salary Management System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Employee {
+  id                String       @id @default(cuid())
+  employeeId        String       @unique // human-friendly e.g. EMP-001
+  name              String
+  email             String?
+  phone             String?
+  department        String?
+  position          String?
+  baseSalary        Float        @default(0) // monthly base salary in INR
+  absentDeduction   Float?       // custom ₹ deducted per absent day for this employee; falls back to (baseSalary / working days in month) if not set
+  faceDescriptor    String       // JSON-encoded Float32Array (128 dims)
+  faceImage         String?      // base64 thumbnail of enrolled face
+  bankAccountNumber String?
+  bankIFSC          String?
+  bankAccountHolder String?      // name as per bank records, may differ slightly from `name`
+  active            Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  attendances       Attendance[]
+}
+
+model Attendance {
+  id           String    @id @default(cuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date         String    // YYYY-MM-DD (local date)
+  checkIn      DateTime?
+  checkOut     DateTime?
+  status       String    // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
+  lateMinutes  Int       @default(0)
+  workingHours Float     @default(0) // in hours, decimal
+  deduction    Float     @default(0) // rupees deducted for this day
+  note         String?
+  source       String    @default("WORKSHOP") // WORKSHOP | SITE
+  siteLat      Float?
+  siteLng      Float?
+  sitePhoto    String?   // base64 selfie captured at the site, face-verified against enrollment
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+// Configurable late-arrival / absence deduction tiers
+model AttendanceRule {
+  id           String   @id @default(cuid())
+  name         String
+  // kind: LATE_TIER | ABSENT | HALF_DAY | EARLY_LEAVE
+  kind         String
+  // For LATE_TIER: minutesAfterThreshold (e.g. 15 means after 09:15 if start=09:00)
+  minutesAfter Int?
+  // deduction in rupees
+  deduction    Float
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Global company / shift settings
+model Setting {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  value        String
+  updatedAt    DateTime @updatedAt
+}
+
+// A month's salary calculation, taken through admin approval before a bank
+// payout file is generated. Nothing here ever moves money automatically —
+// the admin still uploads the payout file to their bank portal themselves.
+model PayrollRun {
+  id            String            @id @default(cuid())
+  month         String            @unique // YYYY-MM
+  status        String            @default("DRAFT") // DRAFT | APPROVED | PAID
+  totalAmount   Float             @default(0)
+  employeeCount Int               @default(0)
+  generatedAt   DateTime          @default(now())
+  approvedAt    DateTime?
+  approvedBy    String?
+  paidAt        DateTime?
+  paidBy        String?
+  items         PayrollLineItem[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+// Snapshot of one employee's pay for a PayrollRun — deliberately denormalized
+// (name/bank details copied at generation time) so a payroll record stays
+// accurate even if the employee's profile changes later.
+model PayrollLineItem {
+  id                String     @id @default(cuid())
+  payrollRunId      String
+  payrollRun        PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employeeId        String
+  employeeCode      String
+  employeeName      String
+  baseSalary        Float
+  presentDays       Int        @default(0)
+  lateDays          Int        @default(0)
+  halfDays          Int        @default(0)
+  absentDays        Int        @default(0)
+  totalDeduction    Float      @default(0)
+  netPayable        Float
+  bankAccountNumber String?
+  bankIFSC          String?
+  bankAccountHolder String?
+  createdAt         DateTime   @default(now())
+
+  @@index([payrollRunId])
+}

@@ -1,0 +1,288 @@
+// Salary calculation and attendance rule helpers
+
+export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'LEAVE'
+
+export interface LateTier {
+  id: string
+  name: string
+  minutesAfter: number | null // null = absent tier
+  deduction: number
+}
+
+export interface ShiftSettings {
+  shiftStart: string // HH:MM (24h)
+  shiftEnd: string   // HH:MM (24h)
+  halfDayAfterMinutes: number // minutes late after which counts as half day
+  absentAfterMinutes: number  // minutes late after which counts as absent
+  standardWorkingHours: number // expected hours per day
+  minCheckoutGapMinutes: number // min minutes after check-in before a check-out scan is accepted
+}
+
+export const DEFAULT_SHIFT: ShiftSettings = {
+  shiftStart: '09:00',
+  shiftEnd: '18:00',
+  halfDayAfterMinutes: 240,   // 4 hours late = half day
+  absentAfterMinutes: 480,    // 8 hours late / no show = absent
+  standardWorkingHours: 9,
+  minCheckoutGapMinutes: 60,  // block accidental checkout within 1 hour of check-in
+}
+
+export function timeStringToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
+export function minutesToTimeString(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+export function getMinutesLate(checkIn: Date, shift: ShiftSettings): number {
+  const checkInMins = checkIn.getHours() * 60 + checkIn.getMinutes()
+  const shiftStartMins = timeStringToMinutes(shift.shiftStart)
+  return Math.max(0, checkInMins - shiftStartMins)
+}
+
+export function calcWorkingHours(checkIn: Date, checkOut: Date): number {
+  const diffMs = checkOut.getTime() - checkIn.getTime()
+  return Math.max(0, diffMs / (1000 * 60 * 60))
+}
+
+export interface DayResult {
+  status: AttendanceStatus
+  lateMinutes: number
+  workingHours: number
+  deduction: number
+  note?: string
+}
+
+/**
+ * Calculate attendance status & deduction for a single check-in/out.
+ * - PRESENT: arrived on time or up to (halfDayAfterMinutes) late, no deduction unless a late tier matched
+ * - LATE:    arrived after shift start but within half-day window; tiered deduction may apply
+ * - HALF_DAY: arrived very late (past halfDayAfterMinutes); half-day salary deducted
+ * - ABSENT:  no check-in at all OR arrived past absentAfterMinutes
+ */
+export function evaluateDay(
+  checkIn: Date | null,
+  checkOut: Date | null,
+  shift: ShiftSettings,
+  tiers: LateTier[],
+  dailyWage: number,
+  absentDeductionOverride?: number | null,
+): DayResult {
+  // Per-employee custom absence rate, if the admin set one; otherwise the full daily wage.
+  const absentDeduction = absentDeductionOverride ?? dailyWage
+
+  // No check-in at all → absent
+  if (!checkIn) {
+    return {
+      status: 'ABSENT',
+      lateMinutes: 0,
+      workingHours: 0,
+      deduction: absentDeduction,
+      note: 'No check-in recorded',
+    }
+  }
+
+  const lateMins = getMinutesLate(checkIn, shift)
+  let status: AttendanceStatus = 'PRESENT'
+  let note: string | undefined
+
+  if (lateMins === 0) {
+    status = 'PRESENT'
+  } else if (lateMins < shift.halfDayAfterMinutes) {
+    status = 'LATE'
+    note = `Late by ${lateMins} min`
+  } else if (lateMins < shift.absentAfterMinutes) {
+    status = 'HALF_DAY'
+    note = `Late by ${lateMins} min — half day`
+  } else {
+    status = 'ABSENT'
+    note = `Late by ${lateMins} min — marked absent`
+  }
+
+  // Compute deduction
+  let deduction = 0
+
+  if (status === 'ABSENT') {
+    deduction = absentDeduction
+  } else if (status === 'HALF_DAY') {
+    deduction = dailyWage / 2
+  } else if (status === 'LATE') {
+    // Find highest matching tier: tier.minutesAfter is "minutes after shift start"
+    // Take the tier with the largest minutesAfter that is <= lateMins
+    const matching = tiers
+      .filter((t) => t.minutesAfter !== null && t.minutesAfter !== undefined && t.minutesAfter <= lateMins)
+      .sort((a, b) => (b.minutesAfter ?? 0) - (a.minutesAfter ?? 0))
+    if (matching.length > 0) {
+      deduction = matching[0].deduction
+    }
+  }
+
+  const workingHours = checkOut ? calcWorkingHours(checkIn, checkOut) : 0
+
+  return {
+    status,
+    lateMinutes: lateMins,
+    workingHours,
+    deduction,
+    note,
+  }
+}
+
+export interface MonthlyReportRow {
+  employeeId: string
+  employeeCode: string
+  name: string
+  department: string | null
+  baseSalary: number
+  presentDays: number
+  lateDays: number
+  halfDays: number
+  absentDays: number
+  leaveDays: number
+  totalDeduction: number
+  payableSalary: number
+}
+
+/**
+ * Builds a monthly payroll/report row for one employee.
+ *
+ * Days with NO attendance record at all (employee never checked in, never
+ * site-checked-in, and no manual entry was made) are treated as an implicit
+ * full-day absence — otherwise a no-show is simply invisible to payroll and
+ * costs the employee nothing, which defeats the point of tracking attendance.
+ * Days are only counted this way if they fall on/after the employee's join
+ * date (createdAt) and on/before "today" — future days are never penalized.
+ */
+export function buildMonthlyReportRow(
+  emp: {
+    id: string
+    employeeId: string
+    name: string
+    department: string | null
+    baseSalary: number
+    createdAt: Date | string
+    absentDeduction?: number | null
+  },
+  attendances: Array<{
+    date: string
+    status: string
+    deduction: number
+  }>,
+  year: number,
+  month: number, // 1-indexed
+): MonthlyReportRow {
+  const presentDays = attendances.filter((a) => a.status === 'PRESENT').length
+  const lateDays = attendances.filter((a) => a.status === 'LATE').length
+  const halfDays = attendances.filter((a) => a.status === 'HALF_DAY').length
+  const explicitAbsentDays = attendances.filter((a) => a.status === 'ABSENT').length
+  const leaveDays = attendances.filter((a) => a.status === 'LEAVE').length
+  const explicitDeduction = attendances.reduce((s, a) => s + (a.deduction || 0), 0)
+
+  const workingDaysInMonth = getWorkingDaysInMonth(year, month)
+  const dailyWage = workingDaysInMonth > 0 ? emp.baseSalary / workingDaysInMonth : 0
+  const perAbsentDayRate = emp.absentDeduction ?? dailyWage
+
+  const recordedDates = new Set(attendances.map((a) => a.date))
+  const joinDateStr = getLocalDateString(typeof emp.createdAt === 'string' ? new Date(emp.createdAt) : emp.createdAt)
+  const todayDateStr = getLocalDateString()
+  const daysInMonth = new Date(year, month, 0).getDate()
+
+  let implicitAbsentDays = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    if (new Date(year, month - 1, d).getDay() === 0) continue // Sunday
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    if (dateStr > todayDateStr || dateStr < joinDateStr) continue
+    if (!recordedDates.has(dateStr)) implicitAbsentDays++
+  }
+  const implicitDeduction = implicitAbsentDays * perAbsentDayRate
+
+  const absentDays = explicitAbsentDays + implicitAbsentDays
+  const totalDeduction = explicitDeduction + implicitDeduction
+  const payableSalary = Math.max(0, emp.baseSalary - totalDeduction)
+
+  return {
+    employeeId: emp.id,
+    employeeCode: emp.employeeId,
+    name: emp.name,
+    department: emp.department,
+    baseSalary: emp.baseSalary,
+    presentDays,
+    lateDays,
+    halfDays,
+    absentDays,
+    leaveDays,
+    totalDeduction,
+    payableSalary,
+  }
+}
+
+/**
+ * Working days in a month excluding Sundays.
+ * (Can be extended to honor a holidays table later.)
+ */
+export function getWorkingDaysInMonth(year: number, month: number): number {
+  // month is 1-indexed
+  const daysInMonth = new Date(year, month, 0).getDate()
+  let working = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, month - 1, d).getDay()
+    if (dow !== 0) working++ // skip Sundays
+  }
+  return working
+}
+
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+// This app runs on servers whose system timezone is UTC (e.g. Vercel), but the
+// business is in India — every date/time shown to a user, or used to decide
+// which calendar day an attendance record belongs to, must be pinned to IST
+// regardless of where the code executes. Never use Date.getHours()/getDate()/
+// toLocaleTimeString() without timeZone here.
+export const IST_TIME_ZONE = 'Asia/Kolkata'
+
+export function formatDate(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date
+  return d.toLocaleDateString('en-IN', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    timeZone: IST_TIME_ZONE,
+  })
+}
+
+export function formatTime(date: Date | string | null): string {
+  if (!date) return '—'
+  const d = typeof date === 'string' ? new Date(date) : date
+  return d.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+    timeZone: IST_TIME_ZONE,
+  })
+}
+
+export function getLocalDateString(d: Date = new Date()): string {
+  // YYYY-MM-DD in IST, regardless of the server/browser's own timezone
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: IST_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d)
+}
+
+export function getISTParts(d: Date = new Date()): { year: number; month: number; day: number } {
+  const [year, month, day] = getLocalDateString(d).split('-').map(Number)
+  return { year, month, day }
+}

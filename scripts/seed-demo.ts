@@ -54,11 +54,12 @@ async function main() {
     { employeeId: 'EMP-008', name: 'Anjali Gupta', department: 'Quality', position: 'Inspector', baseSalary: 18000 },
   ]
 
-  const fakeDescriptor = JSON.stringify(Array.from({ length: 128 }, () => Math.random() * 2 - 1))
-
   for (const e of demoEmployees) {
     const existing = await db.employee.findUnique({ where: { employeeId: e.employeeId } })
     if (existing) continue
+    // Each demo employee needs its own distinct random descriptor — sharing
+    // one across all of them made them indistinguishable to face matching.
+    const fakeDescriptor = JSON.stringify(Array.from({ length: 128 }, () => Math.random() * 2 - 1))
     await db.employee.create({
       data: {
         ...e,

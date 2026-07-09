@@ -48,7 +48,7 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
   const [active, setActive] = useState(true)
   const { videoRef, error: camError } = useWebcam(active)
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
-  const [status, setStatus] = useState<'scanning' | 'matching' | 'matched' | 'no-match' | 'no-face'>('scanning')
+  const [status, setStatus] = useState<'scanning' | 'matching' | 'matched' | 'no-match' | 'no-face' | 'ambiguous'>('scanning')
   const [lastResult, setLastResult] = useState<ScanResult | null>(null)
   const [autoScan, setAutoScan] = useState(true)
   const lastScanAtRef = useRef<number>(0)
@@ -74,11 +74,11 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
       }
 
       setStatus('matching')
-      const match = findBestMatch(query, known, 0.55)
+      const match = findBestMatch(query, known)
 
       if (!match || !match.matched) {
-        setStatus('no-match')
-        setTimeout(() => setStatus('scanning'), 2000)
+        setStatus(match?.ambiguous ? 'ambiguous' : 'no-match')
+        setTimeout(() => setStatus('scanning'), 2500)
         return
       }
 
@@ -247,6 +247,15 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
             </div>
           </div>
         )}
+        {status === 'ambiguous' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-amber-900/40">
+            <div className="text-white text-center bg-amber-600 px-4 py-2 rounded-lg max-w-xs">
+              <AlertCircle className="h-6 w-6 mx-auto mb-1" />
+              <p className="text-sm font-medium">Too close to call between two employees</p>
+              <p className="text-xs opacity-90">Move closer with better lighting, or ask admin to re-enroll your face for a clearer match.</p>
+            </div>
+          </div>
+        )}
         {status === 'matched' && lastResult && (
           <div className="absolute inset-0 flex items-center justify-center bg-emerald-900/50">
             <div className="text-white text-center bg-emerald-600 px-6 py-4 rounded-xl shadow-lg max-w-md">
@@ -268,7 +277,7 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
         </div>
         <div className="rounded-md bg-slate-50 p-2">
           <p className="text-slate-500">Match threshold</p>
-          <p className="font-semibold text-slate-900">0.55 (Euclidean)</p>
+          <p className="font-semibold text-slate-900">0.5 (Euclidean)</p>
         </div>
       </div>
 

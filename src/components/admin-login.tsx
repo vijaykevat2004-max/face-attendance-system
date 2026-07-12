@@ -50,8 +50,8 @@ export function AdminLogin({ onLogin }: { onLogin: (admin: AdminInfo) => void })
             <ScanFace className="h-7 w-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Face Attendance</h1>
-            <p className="text-sm text-slate-500">AI-powered attendance & salary management</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Realize Group</h1>
+            <p className="text-sm text-slate-500">Attendance & Salary Management System</p>
           </div>
         </div>
 
@@ -97,7 +97,7 @@ export function AdminLogin({ onLogin }: { onLogin: (admin: AdminInfo) => void })
           </CardContent>
         </Card>
         <p className="text-center text-xs text-slate-400">
-          © {new Date().getFullYear()} Face Attendance System. Built with Next.js + face-api.js
+          © {new Date().getFullYear()} Realize Group Attendance System. Built with Next.js + face-api.js
         </p>
       </div>
     </div>

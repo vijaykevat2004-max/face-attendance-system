@@ -25,6 +25,7 @@ async function loadShiftAndTiers(): Promise<{ shift: ShiftSettings; tiers: LateT
     absentAfterMinutes: Number(map.absentAfterMinutes || DEFAULT_SHIFT.absentAfterMinutes),
     standardWorkingHours: Number(map.standardWorkingHours || DEFAULT_SHIFT.standardWorkingHours),
     minCheckoutGapMinutes: Number(map.minCheckoutGapMinutes || DEFAULT_SHIFT.minCheckoutGapMinutes),
+    overtimeMultiplier: map.overtimeMultiplier !== undefined ? Number(map.overtimeMultiplier) : DEFAULT_SHIFT.overtimeMultiplier,
   }
 
   const rules = await db.attendanceRule.findMany({
@@ -217,6 +218,8 @@ export async function POST(req: NextRequest) {
         data: {
           checkOut: now,
           workingHours: result.workingHours,
+          overtimeHours: result.overtimeHours,
+          overtimePay: result.overtimePay,
           status: result.status,
           lateMinutes: result.lateMinutes,
           deduction: result.deduction,
@@ -224,12 +227,13 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      const overtimeNote = result.overtimeHours > 0 ? ` incl. ${result.overtimeHours.toFixed(2)}h overtime` : ''
       return NextResponse.json({
         ok: true,
         action: 'CHECK_OUT',
         employee: { id: emp.id, name: emp.name, employeeId: emp.employeeId },
         attendance: record,
-        message: `Goodbye ${emp.name}! Checked out at ${formatTime(now)} (${result.workingHours.toFixed(2)}h)`,
+        message: `Goodbye ${emp.name}! Checked out at ${formatTime(now)} (${result.workingHours.toFixed(2)}h${overtimeNote})`,
       })
     }
   } catch (e: any) {

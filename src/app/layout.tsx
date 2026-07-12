@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Face Attendance — AI Recognition & Salary System",
+  title: "Realize Group Attendance System",
   description:
-    "AI-powered face recognition attendance and salary management system for small businesses, workshops, and offices.",
+    "AI-powered face recognition attendance and salary management system for Realize Group.",
   keywords: [
     "face recognition",
     "attendance system",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     "face-api.js",
     "payroll",
   ],
-  authors: [{ name: "Face Attendance System" }],
+  authors: [{ name: "Realize Group" }],
 };
 
 export default function RootLayout({

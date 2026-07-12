@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
           checkOut: true,
           lateMinutes: true,
           workingHours: true,
+          overtimeHours: true,
+          overtimePay: true,
         },
       }),
       db.setting.findMany(),
@@ -47,7 +49,7 @@ export async function GET(req: NextRequest) {
     const now = new Date()
 
     const wb = new ExcelJS.Workbook()
-    wb.creator = 'Face Attendance System'
+    wb.creator = 'Realize Group Attendance System'
     wb.created = now
 
     // Sheet 1: Summary
@@ -55,13 +57,13 @@ export async function GET(req: NextRequest) {
       properties: { defaultColWidth: 16 },
     })
 
-    summary.mergeCells('A1:J1')
+    summary.mergeCells('A1:K1')
     const titleCell = summary.getCell('A1')
     titleCell.value = `${companyName} — Monthly Salary Report (${monthName})`
     titleCell.font = { size: 16, bold: true }
     titleCell.alignment = { horizontal: 'center' }
 
-    summary.mergeCells('A2:J2')
+    summary.mergeCells('A2:K2')
     const subCell = summary.getCell('A2')
     subCell.value = `Generated ${now.toLocaleString('en-IN', { timeZone: IST_TIME_ZONE })}  |  Working days: ${workingDays}  |  Employees: ${employees.length}`
     subCell.font = { size: 10, italic: true }
@@ -69,7 +71,7 @@ export async function GET(req: NextRequest) {
 
     const headerRow = summary.addRow([
       'Emp ID', 'Name', 'Department', 'Base Salary',
-      'Present', 'Late', 'Half Day', 'Absent', 'Total Deduction', 'Payable Salary',
+      'Present', 'Late', 'Half Day', 'Absent', 'Total Deduction', 'Overtime Pay', 'Payable Salary',
     ])
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }
@@ -97,11 +99,13 @@ export async function GET(req: NextRequest) {
         r.halfDays,
         r.absentDays,
         r.totalDeduction,
+        r.totalOvertimePay,
         r.payableSalary,
       ])
       row.getCell(4).numFmt = '"₹"#,##0'
       row.getCell(9).numFmt = '"₹"#,##0'
       row.getCell(10).numFmt = '"₹"#,##0'
+      row.getCell(11).numFmt = '"₹"#,##0'
       row.alignment = { horizontal: 'center' }
       row.getCell(2).alignment = { horizontal: 'left' }
     }
@@ -110,16 +114,18 @@ export async function GET(req: NextRequest) {
     const totals = {
       payrollBase: rows.reduce((s, r) => s + r.baseSalary, 0),
       totalDeduction: rows.reduce((s, r) => s + r.totalDeduction, 0),
+      totalOvertimePay: rows.reduce((s, r) => s + r.totalOvertimePay, 0),
       payable: rows.reduce((s, r) => s + r.payableSalary, 0),
     }
     const totalsRow = summary.addRow([
-      '', 'TOTAL', '', totals.payrollBase, '', '', '', '', totals.totalDeduction, totals.payable,
+      '', 'TOTAL', '', totals.payrollBase, '', '', '', '', totals.totalDeduction, totals.totalOvertimePay, totals.payable,
     ])
     totalsRow.font = { bold: true }
     totalsRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } }
     totalsRow.getCell(4).numFmt = '"₹"#,##0'
     totalsRow.getCell(9).numFmt = '"₹"#,##0'
     totalsRow.getCell(10).numFmt = '"₹"#,##0'
+    totalsRow.getCell(11).numFmt = '"₹"#,##0'
 
     // Freeze header
     summary.views = [{ state: 'frozen', ySplit: 3 }]
@@ -127,7 +133,7 @@ export async function GET(req: NextRequest) {
     // Sheet 2: Daily Detail
     const detail = wb.addWorksheet('Daily Detail', { properties: { defaultColWidth: 14 } })
     const detailHeader = detail.addRow([
-      'Emp ID', 'Name', 'Date', 'Status', 'Check In', 'Check Out', 'Late (min)', 'Hours', 'Deduction',
+      'Emp ID', 'Name', 'Date', 'Status', 'Check In', 'Check Out', 'Late (min)', 'Hours', 'OT Hours', 'OT Pay', 'Deduction',
     ])
     detailHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     detailHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }
@@ -147,9 +153,12 @@ export async function GET(req: NextRequest) {
           formatTime(a.checkOut),
           a.lateMinutes,
           a.workingHours,
+          a.overtimeHours,
+          a.overtimePay,
           a.deduction,
         ])
-        row.getCell(9).numFmt = '"₹"#,##0'
+        row.getCell(10).numFmt = '"₹"#,##0'
+        row.getCell(11).numFmt = '"₹"#,##0'
         row.alignment = { horizontal: 'center' }
         row.getCell(2).alignment = { horizontal: 'left' }
       }

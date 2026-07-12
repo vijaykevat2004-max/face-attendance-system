@@ -30,6 +30,8 @@ interface ManualForm {
   date: string
   status: string
   deduction: string
+  overtimeHours: string
+  overtimePay: string
   note: string
 }
 
@@ -38,6 +40,8 @@ const EMPTY_MANUAL_FORM: ManualForm = {
   date: getLocalDateString(),
   status: 'ABSENT',
   deduction: '0',
+  overtimeHours: '0',
+  overtimePay: '0',
   note: '',
 }
 
@@ -49,6 +53,8 @@ interface AttendanceRow {
   status: string
   lateMinutes: number
   workingHours: number
+  overtimeHours: number
+  overtimePay: number
   deduction: number
   note: string | null
   source: string
@@ -93,13 +99,15 @@ export function AttendanceHistory() {
     loadEmployees()
   }, [loadEmployees])
 
-  const openManualEntry = (prefill?: { employeeId: string; date: string; status: string; deduction: number; note: string | null }) => {
+  const openManualEntry = (prefill?: { employeeId: string; date: string; status: string; deduction: number; overtimeHours?: number; overtimePay?: number; note: string | null }) => {
     if (prefill) {
       setManualForm({
         employeeId: prefill.employeeId,
         date: prefill.date,
         status: prefill.status,
         deduction: String(prefill.deduction),
+        overtimeHours: String(prefill.overtimeHours ?? 0),
+        overtimePay: String(prefill.overtimePay ?? 0),
         note: prefill.note || '',
       })
       setManualIsEdit(true)
@@ -116,8 +124,10 @@ export function AttendanceHistory() {
       return
     }
     const deduction = Number(manualForm.deduction)
-    if (Number.isNaN(deduction) || deduction < 0) {
-      toast.error('Deduction must be a non-negative number')
+    const overtimeHours = Number(manualForm.overtimeHours) || 0
+    const overtimePay = Number(manualForm.overtimePay) || 0
+    if (Number.isNaN(deduction) || deduction < 0 || overtimeHours < 0 || overtimePay < 0) {
+      toast.error('Deduction and overtime values must be non-negative numbers')
       return
     }
     setManualSaving(true)
@@ -130,6 +140,8 @@ export function AttendanceHistory() {
           date: manualForm.date,
           status: manualForm.status,
           deduction,
+          overtimeHours,
+          overtimePay,
           note: manualForm.note,
         }),
       })
@@ -203,12 +215,13 @@ export function AttendanceHistory() {
   })
 
   const totalDeduction = filtered.reduce((s, r) => s + (r.deduction || 0), 0)
+  const totalOvertimePay = filtered.reduce((s, r) => s + (r.overtimePay || 0), 0)
   const totalHours = filtered.reduce((s, r) => s + (r.workingHours || 0), 0)
   const presentDays = filtered.filter((r) => r.status === 'PRESENT').length
   const lateDays = filtered.filter((r) => r.status === 'LATE').length
 
   const exportCsv = () => {
-    const headers = ['Date', 'Emp ID', 'Name', 'Department', 'Check In', 'Check Out', 'Status', 'Source', 'Late (min)', 'Hours', 'Deduction']
+    const headers = ['Date', 'Emp ID', 'Name', 'Department', 'Check In', 'Check Out', 'Status', 'Source', 'Late (min)', 'Hours', 'OT Hours', 'OT Pay', 'Deduction']
     const lines = [headers.join(',')]
     for (const r of filtered) {
       lines.push([
@@ -222,6 +235,8 @@ export function AttendanceHistory() {
         r.source === 'SITE' ? 'Site' : 'Workshop',
         r.lateMinutes,
         r.workingHours.toFixed(2),
+        r.overtimeHours.toFixed(2),
+        r.overtimePay.toFixed(2),
         r.deduction.toFixed(2),
       ].join(','))
     }
@@ -303,7 +318,7 @@ export function AttendanceHistory() {
       </Card>
 
       {/* Summary */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card className="bg-emerald-50 border-emerald-100">
           <CardContent className="p-4">
             <p className="text-xs text-emerald-700 font-medium">Records</p>
@@ -327,6 +342,12 @@ export function AttendanceHistory() {
             <p className="text-xs text-red-700 font-medium">Total Deductions</p>
             <p className="text-2xl font-bold text-red-900">{formatCurrency(totalDeduction)}</p>
             <p className="text-xs text-red-500 mt-0.5">{totalHours.toFixed(0)}h logged</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-teal-50 border-teal-100">
+          <CardContent className="p-4">
+            <p className="text-xs text-teal-700 font-medium">Overtime Pay</p>
+            <p className="text-2xl font-bold text-teal-900">{formatCurrency(totalOvertimePay)}</p>
           </CardContent>
         </Card>
       </div>
@@ -357,6 +378,7 @@ export function AttendanceHistory() {
                     <th className="py-2 pr-3 font-medium">Source</th>
                     <th className="py-2 pr-3 font-medium">Late</th>
                     <th className="py-2 pr-3 font-medium">Hours</th>
+                    <th className="py-2 pr-3 text-right font-medium">Overtime</th>
                     <th className="py-2 pr-3 text-right font-medium">Deduction</th>
                     <th className="py-2 text-right font-medium"></th>
                   </tr>
@@ -382,6 +404,9 @@ export function AttendanceHistory() {
                       </td>
                       <td className="py-2 pr-3 text-slate-600">{r.lateMinutes > 0 ? `${r.lateMinutes}m` : '—'}</td>
                       <td className="py-2 pr-3 text-slate-600">{r.workingHours > 0 ? r.workingHours.toFixed(2) : '—'}</td>
+                      <td className="py-2 pr-3 text-right">
+                        {r.overtimePay > 0 ? <span className="text-teal-600 font-medium">{formatCurrency(r.overtimePay)}<span className="text-xs text-teal-500 ml-1">({r.overtimeHours.toFixed(1)}h)</span></span> : '—'}
+                      </td>
                       <td className="py-2 pr-3 text-right font-medium">
                         {r.deduction > 0 ? <span className="text-red-600">{formatCurrency(r.deduction)}</span> : '—'}
                       </td>
@@ -389,7 +414,7 @@ export function AttendanceHistory() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => openManualEntry({ employeeId: r.employee.id, date: r.date, status: r.status, deduction: r.deduction, note: r.note })}
+                          onClick={() => openManualEntry({ employeeId: r.employee.id, date: r.date, status: r.status, deduction: r.deduction, overtimeHours: r.overtimeHours, overtimePay: r.overtimePay, note: r.note })}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -460,6 +485,29 @@ export function AttendanceHistory() {
                 onChange={(e) => setManualForm({ ...manualForm, deduction: e.target.value })}
               />
               <p className="text-xs text-slate-500">You decide the exact amount — e.g. 0 for an excused day, or the full/partial daily wage for an unexcused absence.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="manualOtHours">Overtime Hours</Label>
+                <Input
+                  id="manualOtHours"
+                  type="number"
+                  min="0"
+                  step="0.25"
+                  value={manualForm.overtimeHours}
+                  onChange={(e) => setManualForm({ ...manualForm, overtimeHours: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="manualOtPay">Overtime Pay (₹)</Label>
+                <Input
+                  id="manualOtPay"
+                  type="number"
+                  min="0"
+                  value={manualForm.overtimePay}
+                  onChange={(e) => setManualForm({ ...manualForm, overtimePay: e.target.value })}
+                />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="manualNote">Note (optional)</Label>

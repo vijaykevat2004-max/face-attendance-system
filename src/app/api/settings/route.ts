@@ -17,6 +17,7 @@ export async function GET() {
     absentAfterMinutes: Number(map.absentAfterMinutes || DEFAULT_SHIFT.absentAfterMinutes),
     standardWorkingHours: Number(map.standardWorkingHours || DEFAULT_SHIFT.standardWorkingHours),
     minCheckoutGapMinutes: Number(map.minCheckoutGapMinutes || DEFAULT_SHIFT.minCheckoutGapMinutes),
+    overtimeMultiplier: map.overtimeMultiplier !== undefined ? Number(map.overtimeMultiplier) : DEFAULT_SHIFT.overtimeMultiplier,
   }
 
   return NextResponse.json({
@@ -43,6 +44,7 @@ export async function PUT(req: NextRequest) {
       if (shift.absentAfterMinutes !== undefined) updates.absentAfterMinutes = String(shift.absentAfterMinutes)
       if (shift.standardWorkingHours !== undefined) updates.standardWorkingHours = String(shift.standardWorkingHours)
       if (shift.minCheckoutGapMinutes !== undefined) updates.minCheckoutGapMinutes = String(shift.minCheckoutGapMinutes)
+      if (shift.overtimeMultiplier !== undefined) updates.overtimeMultiplier = String(shift.overtimeMultiplier)
     }
 
     for (const [k, v] of Object.entries(updates)) {

@@ -16,6 +16,7 @@ export interface ShiftSettings {
   absentAfterMinutes: number  // minutes late after which counts as absent
   standardWorkingHours: number // expected hours per day
   minCheckoutGapMinutes: number // min minutes after check-in before a check-out scan is accepted
+  overtimeMultiplier: number // pay multiplier applied to the hourly rate for hours beyond standardWorkingHours (e.g. 1.5 = "time and a half"); 0 disables overtime pay
 }
 
 export const DEFAULT_SHIFT: ShiftSettings = {
@@ -25,6 +26,7 @@ export const DEFAULT_SHIFT: ShiftSettings = {
   absentAfterMinutes: 480,    // 8 hours late / no show = absent
   standardWorkingHours: 9,
   minCheckoutGapMinutes: 60,  // block accidental checkout within 1 hour of check-in
+  overtimeMultiplier: 1.5,
 }
 
 export function timeStringToMinutes(t: string): number {
@@ -53,6 +55,8 @@ export interface DayResult {
   status: AttendanceStatus
   lateMinutes: number
   workingHours: number
+  overtimeHours: number
+  overtimePay: number
   deduction: number
   note?: string
 }
@@ -81,6 +85,8 @@ export function evaluateDay(
       status: 'ABSENT',
       lateMinutes: 0,
       workingHours: 0,
+      overtimeHours: 0,
+      overtimePay: 0,
       deduction: absentDeduction,
       note: 'No check-in recorded',
     }
@@ -123,10 +129,23 @@ export function evaluateDay(
 
   const workingHours = checkOut ? calcWorkingHours(checkIn, checkOut) : 0
 
+  // Overtime only applies to a day the employee actually completed — extra
+  // hours logged while LATE/HALF_DAY/ABSENT still count (they showed up and
+  // put the time in), just not while there's no check-out yet.
+  let overtimeHours = 0
+  let overtimePay = 0
+  if (checkOut && workingHours > shift.standardWorkingHours && shift.overtimeMultiplier > 0) {
+    overtimeHours = workingHours - shift.standardWorkingHours
+    const hourlyRate = shift.standardWorkingHours > 0 ? dailyWage / shift.standardWorkingHours : 0
+    overtimePay = overtimeHours * hourlyRate * shift.overtimeMultiplier
+  }
+
   return {
     status,
     lateMinutes: lateMins,
     workingHours,
+    overtimeHours,
+    overtimePay,
     deduction,
     note,
   }
@@ -144,6 +163,8 @@ export interface MonthlyReportRow {
   absentDays: number
   leaveDays: number
   totalDeduction: number
+  totalOvertimeHours: number
+  totalOvertimePay: number
   payableSalary: number
 }
 
@@ -171,6 +192,8 @@ export function buildMonthlyReportRow(
     date: string
     status: string
     deduction: number
+    overtimeHours?: number
+    overtimePay?: number
   }>,
   year: number,
   month: number, // 1-indexed
@@ -181,6 +204,8 @@ export function buildMonthlyReportRow(
   const explicitAbsentDays = attendances.filter((a) => a.status === 'ABSENT').length
   const leaveDays = attendances.filter((a) => a.status === 'LEAVE').length
   const explicitDeduction = attendances.reduce((s, a) => s + (a.deduction || 0), 0)
+  const totalOvertimeHours = attendances.reduce((s, a) => s + (a.overtimeHours || 0), 0)
+  const totalOvertimePay = attendances.reduce((s, a) => s + (a.overtimePay || 0), 0)
 
   const workingDaysInMonth = getWorkingDaysInMonth(year, month)
   const dailyWage = workingDaysInMonth > 0 ? emp.baseSalary / workingDaysInMonth : 0
@@ -202,7 +227,7 @@ export function buildMonthlyReportRow(
 
   const absentDays = explicitAbsentDays + implicitAbsentDays
   const totalDeduction = explicitDeduction + implicitDeduction
-  const payableSalary = Math.max(0, emp.baseSalary - totalDeduction)
+  const payableSalary = Math.max(0, emp.baseSalary - totalDeduction + totalOvertimePay)
 
   return {
     employeeId: emp.id,
@@ -216,6 +241,8 @@ export function buildMonthlyReportRow(
     absentDays,
     leaveDays,
     totalDeduction,
+    totalOvertimeHours,
+    totalOvertimePay,
     payableSalary,
   }
 }
@@ -285,4 +312,48 @@ export function getLocalDateString(d: Date = new Date()): string {
 export function getISTParts(d: Date = new Date()): { year: number; month: number; day: number } {
   const [year, month, day] = getLocalDateString(d).split('-').map(Number)
   return { year, month, day }
+}
+
+export type CalendarDayStatus = 'PRESENT' | 'LATE' | 'HALF_DAY' | 'ABSENT' | 'LEAVE' | 'SUNDAY' | 'FUTURE' | 'NO_DATA'
+
+export interface CalendarDay {
+  date: string
+  status: CalendarDayStatus
+}
+
+/**
+ * Builds a full-month, day-by-day attendance view for the calendar UI —
+ * mirrors the exact day-classification rules used in buildMonthlyReportRow
+ * (Sundays excluded, days before the employee joined excluded, days without
+ * any record treated as an absence) so the calendar always agrees with the
+ * payroll numbers for the same month.
+ */
+export function buildMonthCalendar(
+  joinDateStr: string,
+  year: number,
+  month: number, // 1-indexed
+  recorded: Map<string, string>, // date -> status
+): CalendarDay[] {
+  const todayDateStr = getLocalDateString()
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const result: CalendarDay[] = []
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const dow = new Date(year, month - 1, d).getDay()
+
+    if (dateStr > todayDateStr) {
+      result.push({ date: dateStr, status: 'FUTURE' })
+    } else if (dateStr < joinDateStr) {
+      result.push({ date: dateStr, status: 'NO_DATA' })
+    } else if (dow === 0) {
+      result.push({ date: dateStr, status: 'SUNDAY' })
+    } else if (recorded.has(dateStr)) {
+      result.push({ date: dateStr, status: recorded.get(dateStr) as CalendarDayStatus })
+    } else {
+      result.push({ date: dateStr, status: 'ABSENT' })
+    }
+  }
+
+  return result
 }

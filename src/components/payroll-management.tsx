@@ -40,6 +40,7 @@ interface LineItem {
   halfDays: number
   absentDays: number
   totalDeduction: number
+  totalOvertimePay: number
   netPayable: number
   bankAccountNumber: string | null
   bankIFSC: string | null
@@ -289,6 +290,7 @@ export function PayrollManagement() {
                       <th className="py-2 pr-3 font-medium">Present/Late/Half/Absent</th>
                       <th className="py-2 pr-3 font-medium">Base</th>
                       <th className="py-2 pr-3 font-medium">Deduction</th>
+                      <th className="py-2 pr-3 font-medium">Overtime</th>
                       <th className="py-2 pr-3 font-medium">Net Payable</th>
                       <th className="py-2 font-medium">Bank A/C</th>
                     </tr>
@@ -305,6 +307,7 @@ export function PayrollManagement() {
                         </td>
                         <td className="py-2 pr-3">{formatCurrency(item.baseSalary)}</td>
                         <td className="py-2 pr-3 text-red-600">{item.totalDeduction > 0 ? `-${formatCurrency(item.totalDeduction)}` : '—'}</td>
+                        <td className="py-2 pr-3 text-teal-600">{item.totalOvertimePay > 0 ? `+${formatCurrency(item.totalOvertimePay)}` : '—'}</td>
                         <td className="py-2 pr-3 font-semibold">{formatCurrency(item.netPayable)}</td>
                         <td className="py-2">
                           {item.bankAccountNumber ? (

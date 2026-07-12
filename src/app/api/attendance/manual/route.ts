@@ -8,31 +8,38 @@ const VALID_STATUSES = ['PRESENT', 'LATE', 'HALF_DAY', 'ABSENT', 'LEAVE']
 
 /**
  * POST /api/attendance/manual — admin creates or overrides a single day's
- * attendance record by hand (status + exact deduction amount), instead of
- * relying on the face-scan kiosk or the automatic no-show calculation.
- * Body: { employeeId, date: "YYYY-MM-DD", status, deduction, note? }
+ * attendance record by hand (status + exact deduction/overtime amounts),
+ * instead of relying on the face-scan kiosk or the automatic no-show calculation.
+ * Body: { employeeId, date: "YYYY-MM-DD", status, deduction, overtimeHours?, overtimePay?, note? }
  */
 export async function POST(req: NextRequest) {
   try {
     const session = await requireAdmin()
     const body = await req.json()
-    const { employeeId, date, status, deduction, note } = body as {
+    const { employeeId, date, status, deduction, overtimeHours, overtimePay, note } = body as {
       employeeId: string
       date: string
       status: string
       deduction: number
+      overtimeHours?: number
+      overtimePay?: number
       note?: string
     }
+
+    const ot = Number(overtimeHours) || 0
+    const otPay = Number(overtimePay) || 0
 
     if (
       !employeeId ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date || '') ||
       !VALID_STATUSES.includes(status) ||
       typeof deduction !== 'number' ||
-      deduction < 0
+      deduction < 0 ||
+      ot < 0 ||
+      otPay < 0
     ) {
       return NextResponse.json(
-        { error: 'employeeId, a valid YYYY-MM-DD date, a valid status, and a non-negative deduction are required' },
+        { error: 'employeeId, a valid YYYY-MM-DD date, a valid status, and non-negative deduction/overtime values are required' },
         { status: 400 },
       )
     }
@@ -43,8 +50,8 @@ export async function POST(req: NextRequest) {
     const finalNote = note?.trim() || `Manually set by ${session.name || session.username}`
     const record = await db.attendance.upsert({
       where: { employeeId_date: { employeeId, date } },
-      update: { status, deduction, note: finalNote, source: 'MANUAL' },
-      create: { employeeId, date, status, deduction, note: finalNote, source: 'MANUAL' },
+      update: { status, deduction, overtimeHours: ot, overtimePay: otPay, note: finalNote, source: 'MANUAL' },
+      create: { employeeId, date, status, deduction, overtimeHours: ot, overtimePay: otPay, note: finalNote, source: 'MANUAL' },
     })
 
     return NextResponse.json({ ok: true, attendance: record })

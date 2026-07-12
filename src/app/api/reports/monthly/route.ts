@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
         checkOut: true,
         lateMinutes: true,
         workingHours: true,
+        overtimeHours: true,
+        overtimePay: true,
         date: true,
       },
     })
@@ -66,6 +68,8 @@ export async function GET(req: NextRequest) {
           checkOut: a.checkOut,
           lateMinutes: a.lateMinutes,
           workingHours: a.workingHours,
+          overtimeHours: a.overtimeHours,
+          overtimePay: a.overtimePay,
           deduction: a.deduction,
         })),
       }
@@ -74,6 +78,7 @@ export async function GET(req: NextRequest) {
     const totals = {
       payrollBase: rows.reduce((s, r) => s + r.baseSalary, 0),
       totalDeduction: rows.reduce((s, r) => s + r.totalDeduction, 0),
+      totalOvertimePay: rows.reduce((s, r) => s + r.totalOvertimePay, 0),
       payable: rows.reduce((s, r) => s + r.payableSalary, 0),
       presentDays: rows.reduce((s, r) => s + r.presentDays, 0),
       lateDays: rows.reduce((s, r) => s + r.lateDays, 0),

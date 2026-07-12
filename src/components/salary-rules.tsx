@@ -29,6 +29,7 @@ interface ShiftSettings {
   absentAfterMinutes: number
   standardWorkingHours: number
   minCheckoutGapMinutes: number
+  overtimeMultiplier: number
 }
 
 export function SalaryRules() {
@@ -222,6 +223,18 @@ export function SalaryRules() {
             />
             <p className="text-xs text-slate-500">Prevents accidental checkout if the scanner sees the same face again right after check-in.</p>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="otMultiplier">Overtime Pay Multiplier</Label>
+            <Input
+              id="otMultiplier"
+              type="number"
+              step="0.1"
+              min="0"
+              value={shift.overtimeMultiplier}
+              onChange={(e) => setShift({ ...shift, overtimeMultiplier: Number(e.target.value) })}
+            />
+            <p className="text-xs text-slate-500">Extra pay rate for hours worked beyond standard hours (1.5 = time-and-a-half). Set to 0 to disable overtime pay.</p>
+          </div>
           <div className="md:col-span-3">
             <Button onClick={saveSettings} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
               <Save className="h-4 w-4 mr-2" /> Save Settings
@@ -334,6 +347,7 @@ export function SalaryRules() {
             <p>For each day, the system picks the highest matching tier where <code className="bg-white px-1 rounded">minutesAfter ≤ actualLateMinutes</code>, then applies that tier&apos;s deduction.</p>
             <p>If the employee arrives past <strong>{shift.halfDayAfterMinutes} min late</strong>, half-day salary is deducted (overrides tier). Past <strong>{shift.absentAfterMinutes} min late</strong> or no check-in, full-day salary is deducted.</p>
             <p>Daily wage = <code className="bg-white px-1 rounded">baseSalary ÷ workingDaysInMonth</code> (excludes Sundays).</p>
+            <p>Hours worked past <strong>{shift.standardWorkingHours}h</strong> on a completed day are paid as overtime at <code className="bg-white px-1 rounded">hourlyRate × {shift.overtimeMultiplier}</code>, added on top of salary.</p>
           </div>
         </CardContent>
       </Card>

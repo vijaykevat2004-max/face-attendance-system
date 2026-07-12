@@ -66,9 +66,13 @@ export async function detectSingleFace(
 ): Promise<FaceDetectionResult | null> {
   await ensureModels()
 
+  // scoreThreshold kept fairly low so faces in dim light / lower-quality phone
+  // front cameras still get picked up. Recognition accuracy is still guarded by
+  // the Euclidean match threshold + margin downstream, so a loose *detection*
+  // threshold here only affects whether we find a face to scan, not who it maps to.
   const options = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.5,
+    inputSize: 416,
+    scoreThreshold: 0.35,
   })
 
   const result = await faceapi

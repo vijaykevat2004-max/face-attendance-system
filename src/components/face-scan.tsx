@@ -51,15 +51,22 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
   const [status, setStatus] = useState<'scanning' | 'matching' | 'matched' | 'no-match' | 'no-face' | 'ambiguous'>('scanning')
   const [lastResult, setLastResult] = useState<ScanResult | null>(null)
   const [autoScan, setAutoScan] = useState(true)
-  const lastScanAtRef = useRef<number>(0)
+  const [faceInFrame, setFaceInFrame] = useState(false)
+  const [scanError, setScanError] = useState<string | null>(null)
   const employeesRef = useRef(employees)
   // Use a ref so the scan loop can always call the latest attemptMatch without re-subscribing
   const attemptMatchRef = useRef<(q: FaceDescriptor) => Promise<void>>(async () => {})
+  // Read latest status inside the interval without re-subscribing the loop
+  const statusRef = useRef(status)
 
   // Keep employeesRef in sync
   useEffect(() => {
     employeesRef.current = employees
   }, [employees])
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
 
   const attemptMatch = useCallback(
     async (query: FaceDescriptor) => {
@@ -131,58 +138,81 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
     attemptMatchRef.current = attemptMatch
   }, [attemptMatch])
 
-  // Continuous auto-scan loop
-  useEffect(() => {
-    if (!autoScan || modelState !== 'ready' || status === 'matched' || status === 'matching') return
-    let raf = 0
-    let cancelled = false
-
-    const tick = async () => {
-      if (cancelled) return
-      const video = videoRef.current
-      if (video && video.videoWidth > 0) {
-        const now = Date.now()
-        if (now - lastScanAtRef.current > 1200) {
-          lastScanAtRef.current = now
-          try {
-            const result = await detectSingleFace(video)
-            const overlay = overlayRef.current
-            if (overlay) {
-              overlay.width = video.videoWidth
-              overlay.height = video.videoHeight
-              const ctx = overlay.getContext('2d')
-              if (ctx) {
-                ctx.clearRect(0, 0, overlay.width, overlay.height)
-                if (result) {
-                  ctx.strokeStyle = '#22c55e'
-                  ctx.lineWidth = 4
-                  ctx.strokeRect(result.box.x, result.box.y, result.box.width, result.box.height)
-                  // Label
-                  ctx.fillStyle = 'rgba(34,197,94,0.9)'
-                  const labelW = 80
-                  ctx.fillRect(result.box.x, Math.max(0, result.box.y - 22), labelW, 20)
-                  ctx.fillStyle = 'white'
-                  ctx.font = '12px sans-serif'
-                  ctx.fillText(`Face ${(result.score * 100).toFixed(0)}%`, result.box.x + 4, Math.max(0, result.box.y - 22) + 14)
-                }
-              }
-            }
-            if (result) {
-              await attemptMatchRef.current(result.descriptor)
-            }
-          } catch (e) {
-            // silent
-          }
-        }
-      }
-      raf = requestAnimationFrame(tick)
+  // Draw (or clear) the detection box on the overlay canvas
+  const drawOverlay = useCallback((result: Awaited<ReturnType<typeof detectSingleFace>>, video: HTMLVideoElement) => {
+    const overlay = overlayRef.current
+    if (!overlay) return
+    overlay.width = video.videoWidth
+    overlay.height = video.videoHeight
+    const ctx = overlay.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, overlay.width, overlay.height)
+    if (result) {
+      ctx.strokeStyle = '#22c55e'
+      ctx.lineWidth = 4
+      ctx.strokeRect(result.box.x, result.box.y, result.box.width, result.box.height)
+      ctx.fillStyle = 'rgba(34,197,94,0.9)'
+      ctx.fillRect(result.box.x, Math.max(0, result.box.y - 22), 80, 20)
+      ctx.fillStyle = 'white'
+      ctx.font = '12px sans-serif'
+      ctx.fillText(`Face ${(result.score * 100).toFixed(0)}%`, result.box.x + 4, Math.max(0, result.box.y - 22) + 14)
     }
-    raf = requestAnimationFrame(tick)
+  }, [])
+
+  // Run one detection+match pass. Shared by the auto-scan loop and the manual button.
+  const runScan = useCallback(async () => {
+    if (statusRef.current === 'matched' || statusRef.current === 'matching') return
+    const video = videoRef.current
+    if (!video || video.videoWidth === 0 || video.readyState < 2) return
+    try {
+      const result = await detectSingleFace(video)
+      drawOverlay(result, video)
+      setScanError(null)
+      if (result) {
+        setFaceInFrame(true)
+        await attemptMatchRef.current(result.descriptor)
+      } else {
+        setFaceInFrame(false)
+      }
+    } catch (e) {
+      // Surface it instead of swallowing — on some in-app/older browsers the
+      // WebGL backend used for detection fails, and silent failure looks like
+      // "the scanner is frozen".
+      console.error('face detection error', e)
+      setScanError('Face detection failed on this device. Open the page directly in Chrome or Safari (not inside another app), and make sure the lighting is good.')
+    }
+  }, [videoRef, drawOverlay])
+
+  // Keep the loop calling the latest runScan without re-subscribing
+  const runScanRef = useRef(runScan)
+  useEffect(() => {
+    runScanRef.current = runScan
+  }, [runScan])
+
+  // Continuous auto-scan loop. setInterval (not requestAnimationFrame) because
+  // in-app browsers (e.g. opening the link from WhatsApp) throttle rAF hard,
+  // which was making the scanner appear dead. A processing guard prevents
+  // overlapping detections from piling up on slower phones.
+  useEffect(() => {
+    if (!autoScan || modelState !== 'ready') return
+    let cancelled = false
+    let processing = false
+
+    const id = setInterval(async () => {
+      if (cancelled || processing) return
+      processing = true
+      try {
+        await runScanRef.current()
+      } finally {
+        processing = false
+      }
+    }, 800)
+
     return () => {
       cancelled = true
-      cancelAnimationFrame(raf)
+      clearInterval(id)
     }
-  }, [autoScan, modelState, status, videoRef])
+  }, [autoScan, modelState])
 
   return (
     <Card className="p-4 space-y-3">
@@ -216,12 +246,12 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
         </div>
       </div>
 
-      {(modelError || camError) && (
+      {(modelError || camError || scanError) && (
         <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700 flex items-start gap-2">
           <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="font-medium">{modelError ? 'AI Model Error' : 'Camera Error'}</p>
-            <p className="text-xs mt-1">{modelError || camError}</p>
+            <p className="font-medium">{modelError ? 'AI Model Error' : camError ? 'Camera Error' : 'Scanner Error'}</p>
+            <p className="text-xs mt-1">{modelError || camError || scanError}</p>
           </div>
         </div>
       )}
@@ -231,6 +261,13 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
         <canvas ref={overlayRef} className="absolute inset-0 h-full w-full -scale-x-100" />
         {/* Corner brackets */}
         <div className="pointer-events-none absolute inset-6 border-2 border-white/30 rounded-lg" />
+        {status === 'scanning' && !faceInFrame && modelState === 'ready' && !camError && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+            <div className="text-white text-xs bg-black/55 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+              <ScanFace className="h-3.5 w-3.5" /> Position your face in the frame — good lighting helps
+            </div>
+          </div>
+        )}
         {status === 'matching' && (
           <div className="absolute inset-0 flex items-center justify-center bg-amber-900/40">
             <div className="text-white flex items-center gap-2 bg-amber-600 px-4 py-2 rounded-full">
@@ -281,8 +318,19 @@ export function FaceScan({ employees, action, onResult, cooldownMs = 4000 }: Fac
         </div>
       </div>
 
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        disabled={modelState !== 'ready' || status === 'matching'}
+        onClick={() => runScan()}
+      >
+        <Camera className="h-4 w-4 mr-2" />
+        Scan now
+      </Button>
+
       <p className="text-xs text-slate-500">
-        Stand in front of the camera. The system scans continuously and automatically recognizes enrolled employees. Duplicate check-ins on the same day are blocked.
+        Stand in front of the camera. The system scans continuously and automatically recognizes enrolled employees. If it doesn&apos;t pick you up, improve the lighting and tap <span className="font-medium">Scan now</span>. Duplicate check-ins on the same day are blocked.
       </p>
     </Card>
   )

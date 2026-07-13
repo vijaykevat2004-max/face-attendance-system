@@ -4,6 +4,44 @@ import { buildMonthCalendar, getISTParts, getLocalDateString } from '@/lib/salar
 
 export const runtime = 'nodejs'
 
+// Thresholds for the self-service attendance warning shown to the employee.
+// Kept here (not per-employee) so the rule is uniform. Counts are per month.
+const LATE_WARN = 3 // late/half-day days that trigger an amber warning
+const ABSENT_WARN = 2 // absent days that trigger an amber warning
+const LATE_CRITICAL = 6 // late/half-day days that escalate to a red warning
+const ABSENT_CRITICAL = 4 // absent days that escalate to a red warning
+
+interface AttendanceWarning {
+  level: 'warning' | 'critical'
+  reasons: string[]
+}
+
+/**
+ * Decide whether the employee should see an attendance warning this month, and
+ * how serious it is. Returns null when nothing is wrong. Uses only late / half-
+ * day / absent counts — never salary data — so it stays safe on the public view.
+ */
+function buildAttendanceWarning(summary: {
+  late: number
+  halfDay: number
+  absent: number
+}): AttendanceWarning | null {
+  const lateCount = summary.late + summary.halfDay
+  const reasons: string[] = []
+
+  if (lateCount >= LATE_WARN) {
+    reasons.push(`${lateCount} late / half-day ${lateCount === 1 ? 'day' : 'days'} this month`)
+  }
+  if (summary.absent >= ABSENT_WARN) {
+    reasons.push(`${summary.absent} ${summary.absent === 1 ? 'absence' : 'absences'} this month`)
+  }
+
+  if (reasons.length === 0) return null
+
+  const critical = lateCount >= LATE_CRITICAL || summary.absent >= ABSENT_CRITICAL
+  return { level: critical ? 'critical' : 'warning', reasons }
+}
+
 /**
  * GET /api/my-attendance?code=EMP-001&month=YYYY-MM
  * Public endpoint so an employee can check their own attendance calendar by
@@ -64,12 +102,15 @@ export async function GET(req: NextRequest) {
       overtimeHours: attendances.reduce((s, a) => s + (a.overtimeHours || 0), 0),
     }
 
+    const warning = buildAttendanceWarning(summary)
+
     return NextResponse.json({
       employee: { id: emp.id, employeeId: emp.employeeId, name: emp.name, department: emp.department },
       year,
       month,
       days: daysWithDetail,
       summary,
+      warning,
     })
   } catch (e) {
     console.error('my-attendance error', e)

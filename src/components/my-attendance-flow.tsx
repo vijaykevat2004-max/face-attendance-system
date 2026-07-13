@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AttendanceCalendar, type CalendarDayData } from './attendance-calendar'
 import {
-  Calendar, Loader2, AlertCircle, ArrowRight, ChevronLeft, ChevronRight, ScanFace, LogOut,
+  Calendar, Loader2, AlertCircle, AlertTriangle, ArrowRight, ChevronLeft, ChevronRight, ScanFace, LogOut,
 } from 'lucide-react'
 import { getISTParts } from '@/lib/salary'
 
@@ -27,6 +27,11 @@ interface Summary {
   overtimeHours: number
 }
 
+interface AttendanceWarning {
+  level: 'warning' | 'critical'
+  reasons: string[]
+}
+
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 export function MyAttendanceFlow() {
@@ -36,6 +41,7 @@ export function MyAttendanceFlow() {
   const [employee, setEmployee] = useState<EmployeeInfo | null>(null)
   const [days, setDays] = useState<CalendarDayData[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [warning, setWarning] = useState<AttendanceWarning | null>(null)
   const istNow = getISTParts()
   const [year, setYear] = useState(istNow.year)
   const [month, setMonth] = useState(istNow.month)
@@ -54,6 +60,7 @@ export function MyAttendanceFlow() {
       setEmployee(data.employee)
       setDays(data.days)
       setSummary(data.summary)
+      setWarning(data.warning ?? null)
       setYear(data.year)
       setMonth(data.month)
     } catch (e) {
@@ -151,6 +158,8 @@ export function MyAttendanceFlow() {
                 <div className="py-10 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600" /></div>
               ) : (
                 <>
+                  {warning && <AttendanceWarningBanner warning={warning} />}
+
                   <AttendanceCalendar year={year} month={month} days={days} />
 
                   {summary && (
@@ -171,6 +180,33 @@ export function MyAttendanceFlow() {
         <p className="text-center text-xs text-slate-400 flex items-center justify-center gap-1">
           <ScanFace className="h-3 w-3" /> View-only — no salary or bank details shown here
         </p>
+      </div>
+    </div>
+  )
+}
+
+function AttendanceWarningBanner({ warning }: { warning: AttendanceWarning }) {
+  const critical = warning.level === 'critical'
+  const styles = critical
+    ? 'bg-red-50 border-red-200 text-red-800'
+    : 'bg-amber-50 border-amber-200 text-amber-800'
+  return (
+    <div className={`rounded-lg border p-3 ${styles}`} role="alert">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <div className="space-y-1">
+          <p className="text-sm font-semibold">
+            {critical ? 'Attendance warning — please improve' : 'Attendance notice'}
+          </p>
+          <ul className="text-xs list-disc list-inside space-y-0.5">
+            {warning.reasons.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+          <p className="text-xs opacity-90">
+            Please be on time and inform your admin in advance if you can&apos;t come.
+          </p>
+        </div>
       </div>
     </div>
   )

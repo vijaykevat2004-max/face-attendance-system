@@ -28,36 +28,40 @@ model Employee {
   department        String?
   position          String?
   baseSalary        Float        @default(0) // monthly base salary in INR
-  absentDeduction   Float?       // custom ₹ deducted per absent day for this employee; falls back to (baseSalary / working days in month) if not set
-  faceDescriptor    String       // JSON-encoded Float32Array (128 dims)
-  faceImage         String?      // base64 thumbnail of enrolled face
+  absentDeduction   Float? // custom ₹ deducted per absent day for this employee; falls back to (baseSalary / working days in month) if not set
+  faceDescriptor    String // JSON-encoded Float32Array (128 dims)
+  faceImage         String? // base64 thumbnail of enrolled face
   bankAccountNumber String?
   bankIFSC          String?
-  bankAccountHolder String?      // name as per bank records, may differ slightly from `name`
+  bankAccountHolder String? // name as per bank records, may differ slightly from `name`
   active            Boolean      @default(true)
+  joinDate          DateTime? // explicit employment start date (not createdAt)
+  employmentEndDate DateTime? // optional employment end date
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   attendances       Attendance[]
 }
 
 model Attendance {
-  id           String    @id @default(cuid())
-  employeeId   String
-  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date         String    // YYYY-MM-DD (local date)
-  checkIn      DateTime?
-  checkOut     DateTime?
-  status       String    // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
-  lateMinutes  Int       @default(0)
-  workingHours Float     @default(0) // in hours, decimal
-  deduction    Float     @default(0) // rupees deducted for this day
-  note         String?
-  source       String    @default("WORKSHOP") // WORKSHOP | SITE
-  siteLat      Float?
-  siteLng      Float?
-  sitePhoto    String?   // base64 selfie captured at the site, face-verified against enrollment
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date          String // YYYY-MM-DD (local date)
+  checkIn       DateTime?
+  checkOut      DateTime?
+  status        String // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
+  lateMinutes   Int       @default(0)
+  workingHours  Float     @default(0) // in hours, decimal
+  deduction     Float     @default(0) // rupees deducted for this day
+  note          String?
+  source        String    @default("WORKSHOP") // WORKSHOP | SITE
+  siteLat       Float?
+  siteLng       Float?
+  sitePhoto     String? // base64 selfie captured at the site, face-verified against enrollment
+  overtimeHours Float     @default(0) // hours of overtime worked
+  overtimePay   Float     @default(0) // rupees paid for overtime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([employeeId, date])
   @@index([date])
@@ -80,10 +84,10 @@ model AttendanceRule {
 
 // Global company / shift settings
 model Setting {
-  id           String   @id @default(cuid())
-  key          String   @unique
-  value        String
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
 }
 
 // A month's salary calculation, taken through admin approval before a bank
@@ -121,6 +125,7 @@ model PayrollLineItem {
   halfDays          Int        @default(0)
   absentDays        Int        @default(0)
   totalDeduction    Float      @default(0)
+  totalOvertimePay  Float      @default(0) // total overtime pay for this employee
   netPayable        Float
   bankAccountNumber String?
   bankIFSC          String?
@@ -128,4 +133,16 @@ model PayrollLineItem {
   createdAt         DateTime   @default(now())
 
   @@index([payrollRunId])
+}
+
+// Holiday / non-working day calendar (for attendance eligibility calculations)
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique // date of the holiday (date part only, time ignored)
+  name      String // e.g., "Diwali", "Republic Day"
+  active    Boolean  @default(true) // if false, treated as normal working day
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
 }

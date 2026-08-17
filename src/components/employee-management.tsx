@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,6 +32,8 @@ interface Employee {
   bankAccountNumber: string | null
   bankIFSC: string | null
   bankAccountHolder: string | null
+  joinDate: string | null
+  employmentEndDate: string | null
   createdAt: string
 }
 
@@ -47,6 +49,8 @@ interface FormState {
   bankAccountNumber: string
   bankIFSC: string
   bankAccountHolder: string
+  joinDate: string
+  employmentEndDate: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -61,6 +65,8 @@ const EMPTY_FORM: FormState = {
   bankAccountNumber: '',
   bankIFSC: '',
   bankAccountHolder: '',
+  joinDate: '',
+  employmentEndDate: '',
 }
 
 export function EmployeeManagement() {
@@ -116,6 +122,8 @@ export function EmployeeManagement() {
       bankAccountNumber: emp.bankAccountNumber || '',
       bankIFSC: emp.bankIFSC || '',
       bankAccountHolder: emp.bankAccountHolder || '',
+      joinDate: emp.joinDate ? emp.joinDate.split('T')[0] : '',
+      employmentEndDate: emp.employmentEndDate ? emp.employmentEndDate.split('T')[0] : '',
     })
     setFaceDescriptor(null)
     setFaceImage(emp.faceImage)
@@ -129,6 +137,10 @@ export function EmployeeManagement() {
     }
     if (!editingId && !faceDescriptor) {
       toast.error('Please capture the employee\'s face before saving')
+      return
+    }
+    if (form.joinDate && form.employmentEndDate && form.employmentEndDate < form.joinDate) {
+      toast.error('Employment end date cannot be before joining date')
       return
     }
     setSaving(true)
@@ -145,6 +157,8 @@ export function EmployeeManagement() {
         bankAccountNumber: form.bankAccountNumber,
         bankIFSC: form.bankIFSC,
         bankAccountHolder: form.bankAccountHolder,
+        joinDate: form.joinDate || null,
+        employmentEndDate: form.employmentEndDate || null,
       }
       if (faceDescriptor) payload.faceDescriptor = faceDescriptor
       if (faceImage) payload.faceImage = faceImage
@@ -249,7 +263,7 @@ export function EmployeeManagement() {
                     <th className="py-2 pr-3 font-medium">Contact</th>
                     <th className="py-2 pr-3 font-medium">Department</th>
                     <th className="py-2 pr-3 font-medium">Base Salary</th>
-                    <th className="py-2 pr-3 font-medium">Enrolled</th>
+                    <th className="py-2 pr-3 font-medium">Join Date</th>
                     <th className="py-2 pr-3 font-medium">Status</th>
                     <th className="py-2 text-right font-medium">Actions</th>
                   </tr>
@@ -285,7 +299,9 @@ export function EmployeeManagement() {
                         <div className="text-xs text-slate-400">{emp.position || ''}</div>
                       </td>
                       <td className="py-3 pr-3 font-medium">{formatCurrency(emp.baseSalary)}</td>
-                      <td className="py-3 pr-3 text-xs text-slate-500">{formatDate(emp.createdAt)}</td>
+                      <td className="py-3 pr-3 text-xs text-slate-500">
+                        {emp.joinDate ? formatDate(emp.joinDate) : formatDate(emp.createdAt)}
+                      </td>
                       <td className="py-3 pr-3">
                         {emp.active ? (
                           <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Active</Badge>
@@ -388,6 +404,28 @@ export function EmployeeManagement() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="empJoinDate">Joining Date</Label>
+                  <Input
+                    id="empJoinDate"
+                    type="date"
+                    value={form.joinDate}
+                    onChange={(e) => setForm({ ...form, joinDate: e.target.value })}
+                  />
+                  <p className="text-xs text-slate-500">Defaults to enrollment date if blank.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="empEndDate">Employment End Date</Label>
+                  <Input
+                    id="empEndDate"
+                    type="date"
+                    value={form.employmentEndDate}
+                    onChange={(e) => setForm({ ...form, employmentEndDate: e.target.value })}
+                  />
+                  <p className="text-xs text-slate-500">Leave blank for active employees.</p>
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="empSalary">Monthly Base Salary (₹)</Label>
                 <Input
@@ -409,7 +447,7 @@ export function EmployeeManagement() {
                   onChange={(e) => setForm({ ...form, absentDeduction: e.target.value })}
                   placeholder={`Default: full daily wage (₹${(Number(form.baseSalary) / 26 || 0).toFixed(0)}/day)`}
                 />
-                <p className="text-xs text-slate-500">Leave blank to deduct this employee's full daily wage for every absent/no-show day. Set a custom amount to override it — including 0.</p>
+                <p className="text-xs text-slate-500">Leave blank to deduct this employee&apos;s full daily wage for every absent/no-show day. Set a custom amount to override it — including 0.</p>
               </div>
 
               <div className="pt-2 border-t border-slate-100">

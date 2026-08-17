@@ -10,10 +10,12 @@ import { SiteAttendance } from './site-attendance'
 import { SalaryRules } from './salary-rules'
 import { Reports } from './reports'
 import { PayrollManagement } from './payroll-management'
+import { WorkEfficiency } from './work-efficiency'
+import { HolidayManagement } from './holiday-management'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  ScanFace, LayoutDashboard, Users, Camera, History, Settings, FileText, LogOut, Menu, X, Building2, Wallet,
+  ScanFace, LayoutDashboard, Users, Camera, History, Settings, FileText, LogOut, Menu, X, Building2, Wallet, Activity, CalendarDays,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -23,10 +25,11 @@ interface AdminInfo {
   name: string
 }
 
-type Tab = 'dashboard' | 'employees' | 'live' | 'history' | 'site' | 'rules' | 'reports' | 'payroll'
+type Tab = 'dashboard' | 'employees' | 'live' | 'history' | 'site' | 'rules' | 'reports' | 'payroll' | 'efficiency' | 'holidays'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'efficiency', label: 'Work Efficiency', icon: Activity },
   { id: 'live', label: 'Live Attendance', icon: Camera },
   { id: 'employees', label: 'Employees', icon: Users },
   { id: 'history', label: 'Attendance History', icon: History },
@@ -34,6 +37,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'rules', label: 'Salary Rules', icon: Settings },
   { id: 'reports', label: 'Salary Reports', icon: FileText },
   { id: 'payroll', label: 'Payroll', icon: Wallet },
+  { id: 'holidays', label: 'Holidays', icon: CalendarDays },
 ]
 
 export function AppShell() {
@@ -157,6 +161,7 @@ export function AppShell() {
         <main className="flex-1 p-4 lg:p-6 min-w-0">
           <div className="max-w-7xl mx-auto">
             {tab === 'dashboard' && <Dashboard />}
+            {tab === 'efficiency' && <WorkEfficiency />}
             {tab === 'live' && <LiveAttendance />}
             {tab === 'employees' && <EmployeeManagement />}
             {tab === 'history' && <AttendanceHistory />}
@@ -164,6 +169,7 @@ export function AppShell() {
             {tab === 'rules' && <SalaryRules />}
             {tab === 'reports' && <Reports />}
             {tab === 'payroll' && <PayrollManagement />}
+            {tab === 'holidays' && <HolidayManagement />}
           </div>
         </main>
       </div>

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAdmin } from '@/lib/auth'
 import {
   evaluateDay,
+  effectiveDeduction,
   getLocalDateString,
   formatTime,
   getISTParts,
@@ -13,7 +14,7 @@ import {
 
 export const runtime = 'nodejs'
 
-async function loadShiftAndTiers(): Promise<{ shift: ShiftSettings; tiers: LateTier[]; dailyWageFn: (base: number) => number }> {
+async function loadShiftAndTiers(): Promise<{ shift: ShiftSettings; tiers: LateTier[]; dailyWageFn: (base: number) => number; salaryDeductionEnabled: boolean }> {
   const settings = await db.setting.findMany()
   const map: Record<string, string> = {}
   for (const s of settings) map[s.key] = s.value
@@ -38,6 +39,8 @@ async function loadShiftAndTiers(): Promise<{ shift: ShiftSettings; tiers: LateT
     deduction: r.deduction,
   }))
 
+  const salaryDeductionEnabled = map.salaryDeductionEnabled === 'true'
+
   // Daily wage = base salary / working days in current month (excluding Sundays)
   const { year, month } = getISTParts()
   const daysInMonth = new Date(year, month, 0).getDate()
@@ -48,7 +51,7 @@ async function loadShiftAndTiers(): Promise<{ shift: ShiftSettings; tiers: LateT
   const wd = workingDays || 1
   const dailyWageFn = (base: number) => base / wd
 
-  return { shift, tiers, dailyWageFn }
+  return { shift, tiers, dailyWageFn, salaryDeductionEnabled }
 }
 
 /**
@@ -113,7 +116,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Employee not found or inactive' }, { status: 404 })
     }
 
-    const { shift, tiers, dailyWageFn } = await loadShiftAndTiers()
+    const { shift, tiers, dailyWageFn, salaryDeductionEnabled } = await loadShiftAndTiers()
     const now = new Date()
     const dateStr = getLocalDateString(now)
 
@@ -160,6 +163,7 @@ export async function POST(req: NextRequest) {
 
       const dailyWage = dailyWageFn(emp.baseSalary)
       const result = evaluateDay(now, null, shift, tiers, dailyWage, emp.absentDeduction)
+      result.deduction = effectiveDeduction(result.deduction, salaryDeductionEnabled)
 
       const record = await db.attendance.upsert({
         where: { employeeId_date: { employeeId: emp.id, date: dateStr } },
@@ -211,6 +215,7 @@ export async function POST(req: NextRequest) {
 
       const dailyWage = dailyWageFn(emp.baseSalary)
       const result = evaluateDay(existing.checkIn, now, shift, tiers, dailyWage, emp.absentDeduction)
+      result.deduction = effectiveDeduction(result.deduction, salaryDeductionEnabled)
 
       const record = await db.attendance.update({
         where: { id: existing.id },

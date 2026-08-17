@@ -12,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const body = await req.json()
     const {
       name, email, phone, department, position, baseSalary, absentDeduction, active, faceDescriptor, faceImage,
-      bankAccountNumber, bankIFSC, bankAccountHolder,
+      bankAccountNumber, bankIFSC, bankAccountHolder, joinDate, employmentEndDate,
     } = body as {
       name?: string
       email?: string
@@ -27,6 +27,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       bankAccountNumber?: string
       bankIFSC?: string
       bankAccountHolder?: string
+      joinDate?: string | null
+      employmentEndDate?: string | null
+    }
+
+    if (joinDate !== undefined && employmentEndDate !== undefined && joinDate && employmentEndDate && employmentEndDate < joinDate) {
+      return NextResponse.json({ error: 'Employment end date cannot be before joining date' }, { status: 400 })
     }
 
     const data: Record<string, unknown> = {}
@@ -47,6 +53,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (bankAccountNumber !== undefined) data.bankAccountNumber = encryptField(bankAccountNumber)
     if (bankIFSC !== undefined) data.bankIFSC = encryptField(bankIFSC ? bankIFSC.toUpperCase() : null)
     if (bankAccountHolder !== undefined) data.bankAccountHolder = encryptField(bankAccountHolder)
+    if (joinDate !== undefined) data.joinDate = joinDate ? new Date(joinDate) : null
+    if (employmentEndDate !== undefined) data.employmentEndDate = employmentEndDate ? new Date(employmentEndDate) : null
 
     const emp = await db.employee.update({ where: { id }, data })
     return NextResponse.json({ employee: { id: emp.id, name: emp.name } })

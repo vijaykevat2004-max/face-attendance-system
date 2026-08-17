@@ -22,6 +22,7 @@ export async function GET() {
   return NextResponse.json({
     shift,
     companyName: map.companyName || 'Acme Workshop',
+    salaryDeductionEnabled: map.salaryDeductionEnabled === 'true',
   })
 }
 
@@ -29,13 +30,15 @@ export async function PUT(req: NextRequest) {
   try {
     await requireAdmin()
     const body = await req.json()
-    const { shift, companyName } = body as {
+    const { shift, companyName, salaryDeductionEnabled } = body as {
       shift?: Partial<ShiftSettings>
       companyName?: string
+      salaryDeductionEnabled?: boolean
     }
 
     const updates: Record<string, string> = {}
     if (companyName !== undefined) updates.companyName = companyName
+    if (salaryDeductionEnabled !== undefined) updates.salaryDeductionEnabled = String(salaryDeductionEnabled)
     if (shift) {
       if (shift.shiftStart) updates.shiftStart = shift.shiftStart
       if (shift.shiftEnd) updates.shiftEnd = shift.shiftEnd

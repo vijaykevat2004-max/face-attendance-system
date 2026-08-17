@@ -31,6 +31,10 @@ export async function generatePayrollForMonth(month: string): Promise<GeneratePa
     return { run: full, skipped: true, reason: `Payroll for ${month} is already ${existing.status.toLowerCase()} and was not regenerated.` }
   }
 
+  // Read salaryDeductionEnabled setting (defaults to false)
+  const settingRow = await db.setting.findUnique({ where: { key: 'salaryDeductionEnabled' } })
+  const salaryDeductionEnabled = settingRow?.value === 'true'
+
   const from = `${year}-${String(mo).padStart(2, '0')}-01`
   const lastDay = new Date(year, mo, 0).getDate()
   const to = `${year}-${String(mo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
@@ -46,7 +50,7 @@ export async function generatePayrollForMonth(month: string): Promise<GeneratePa
 
   const lineItems = employees.map((emp) => {
     const empAtt = attendances.filter((a) => a.employeeId === emp.id)
-    const row = buildMonthlyReportRow(emp, empAtt, year, mo)
+    const row = buildMonthlyReportRow(emp, empAtt, year, mo, salaryDeductionEnabled)
     return {
       employeeId: emp.id,
       employeeCode: emp.employeeId,

@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
         bankAccountNumber: true,
         bankIFSC: true,
         bankAccountHolder: true,
+        joinDate: true,
+        employmentEndDate: true,
         createdAt: true,
         ...(withDescriptor ? { faceDescriptor: true } : {}),
       },
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const {
       employeeId, name, email, phone, department, position, baseSalary, absentDeduction, faceDescriptor, faceImage,
-      bankAccountNumber, bankIFSC, bankAccountHolder,
+      bankAccountNumber, bankIFSC, bankAccountHolder, joinDate, employmentEndDate,
     } = body as {
       employeeId: string
       name: string
@@ -69,10 +71,16 @@ export async function POST(req: NextRequest) {
       bankAccountNumber?: string
       bankIFSC?: string
       bankAccountHolder?: string
+      joinDate?: string
+      employmentEndDate?: string
     }
 
     if (!employeeId || !name || !faceDescriptor || !Array.isArray(faceDescriptor)) {
       return NextResponse.json({ error: 'employeeId, name and faceDescriptor are required' }, { status: 400 })
+    }
+
+    if (joinDate && employmentEndDate && employmentEndDate < joinDate) {
+      return NextResponse.json({ error: 'Employment end date cannot be before joining date' }, { status: 400 })
     }
 
     // Ensure unique employeeId
@@ -96,6 +104,8 @@ export async function POST(req: NextRequest) {
         bankAccountNumber: encryptField(bankAccountNumber),
         bankIFSC: encryptField(bankIFSC ? bankIFSC.toUpperCase() : null),
         bankAccountHolder: encryptField(bankAccountHolder),
+        joinDate: joinDate ? new Date(joinDate) : null,
+        employmentEndDate: employmentEndDate ? new Date(employmentEndDate) : null,
       },
     })
 

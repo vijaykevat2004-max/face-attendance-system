@@ -35,6 +35,7 @@ export function SalaryRules() {
   const [rules, setRules] = useState<Rule[]>([])
   const [shift, setShift] = useState<ShiftSettings | null>(null)
   const [companyName, setCompanyName] = useState('')
+  const [salaryDeductionEnabled, setSalaryDeductionEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -55,6 +56,7 @@ export function SalaryRules() {
       setRules(d1.rules)
       setShift(d2.shift)
       setCompanyName(d2.companyName || '')
+      setSalaryDeductionEnabled(d2.salaryDeductionEnabled === true)
     } catch (e) {
       console.error(e)
       toast.error('Failed to load configuration')
@@ -74,7 +76,7 @@ export function SalaryRules() {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shift, companyName }),
+        body: JSON.stringify({ shift, companyName, salaryDeductionEnabled }),
       })
       if (!res.ok) throw new Error('failed')
       toast.success('Settings saved')
@@ -221,6 +223,15 @@ export function SalaryRules() {
               onChange={(e) => setShift({ ...shift, minCheckoutGapMinutes: Number(e.target.value) })}
             />
             <p className="text-xs text-slate-500">Prevents accidental checkout if the scanner sees the same face again right after check-in.</p>
+          </div>
+          <div className="md:col-span-3 border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Enable Salary Deductions</p>
+                <p className="text-xs text-slate-500">When OFF (default), no attendance-based salary deductions are applied. All employees receive full base salary. Toggle ON to re-enable deductions for LATE, HALF_DAY, ABSENT, and no-show records.</p>
+              </div>
+              <Switch checked={salaryDeductionEnabled} onCheckedChange={setSalaryDeductionEnabled} />
+            </div>
           </div>
           <div className="md:col-span-3">
             <Button onClick={saveSettings} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">

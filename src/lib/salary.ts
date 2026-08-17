@@ -132,6 +132,13 @@ export function evaluateDay(
   }
 }
 
+/**
+ * Return effective deduction: when salaryDeductionEnabled is false, always 0.
+ */
+export function effectiveDeduction(rawDeduction: number, salaryDeductionEnabled: boolean): number {
+  return salaryDeductionEnabled ? rawDeduction : 0
+}
+
 export interface MonthlyReportRow {
   employeeId: string
   employeeCode: string
@@ -150,12 +157,8 @@ export interface MonthlyReportRow {
 /**
  * Builds a monthly payroll/report row for one employee.
  *
- * Days with NO attendance record at all (employee never checked in, never
- * site-checked-in, and no manual entry was made) are treated as an implicit
- * full-day absence — otherwise a no-show is simply invisible to payroll and
- * costs the employee nothing, which defeats the point of tracking attendance.
- * Days are only counted this way if they fall on/after the employee's join
- * date (createdAt) and on/before "today" — future days are never penalized.
+ * When salaryDeductionEnabled is false, totalDeduction is always 0 and
+ * payableSalary equals baseSalary (full salary).
  */
 export function buildMonthlyReportRow(
   emp: {
@@ -164,6 +167,7 @@ export function buildMonthlyReportRow(
     name: string
     department: string | null
     baseSalary: number
+    joinDate?: Date | string | null
     createdAt: Date | string
     absentDeduction?: number | null
   },
@@ -174,6 +178,7 @@ export function buildMonthlyReportRow(
   }>,
   year: number,
   month: number, // 1-indexed
+  salaryDeductionEnabled: boolean = false,
 ): MonthlyReportRow {
   const presentDays = attendances.filter((a) => a.status === 'PRESENT').length
   const lateDays = attendances.filter((a) => a.status === 'LATE').length
@@ -187,7 +192,8 @@ export function buildMonthlyReportRow(
   const perAbsentDayRate = emp.absentDeduction ?? dailyWage
 
   const recordedDates = new Set(attendances.map((a) => a.date))
-  const joinDateStr = getLocalDateString(typeof emp.createdAt === 'string' ? new Date(emp.createdAt) : emp.createdAt)
+  const joinDate = emp.joinDate ?? emp.createdAt
+  const joinDateStr = getLocalDateString(typeof joinDate === 'string' ? new Date(joinDate) : joinDate)
   const todayDateStr = getLocalDateString()
   const daysInMonth = new Date(year, month, 0).getDate()
 
@@ -201,7 +207,8 @@ export function buildMonthlyReportRow(
   const implicitDeduction = implicitAbsentDays * perAbsentDayRate
 
   const absentDays = explicitAbsentDays + implicitAbsentDays
-  const totalDeduction = explicitDeduction + implicitDeduction
+  const rawTotalDeduction = explicitDeduction + implicitDeduction
+  const totalDeduction = salaryDeductionEnabled ? rawTotalDeduction : 0
   const payableSalary = Math.max(0, emp.baseSalary - totalDeduction)
 
   return {

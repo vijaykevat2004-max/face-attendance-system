@@ -23,39 +23,43 @@ export async function GET(req: NextRequest) {
     const lastDay = new Date(year, month, 0).getDate()
     const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-    const employees = await db.employee.findMany({
-      where: { active: true },
-      orderBy: { employeeId: 'asc' },
-      select: {
-        id: true,
-        employeeId: true,
-        name: true,
-        department: true,
-        baseSalary: true,
-        absentDeduction: true,
-        createdAt: true,
-      },
-    })
+    const [employees, attendances, settingRow] = await Promise.all([
+      db.employee.findMany({
+        where: { active: true },
+        orderBy: { employeeId: 'asc' },
+        select: {
+          id: true,
+          employeeId: true,
+          name: true,
+          department: true,
+          baseSalary: true,
+          absentDeduction: true,
+          joinDate: true,
+          createdAt: true,
+        },
+      }),
+      db.attendance.findMany({
+        where: { date: { gte: from, lte: to } },
+        select: {
+          employeeId: true,
+          status: true,
+          deduction: true,
+          checkIn: true,
+          checkOut: true,
+          lateMinutes: true,
+          workingHours: true,
+          date: true,
+        },
+      }),
+      db.setting.findUnique({ where: { key: 'salaryDeductionEnabled' } }),
+    ])
 
-    const attendances = await db.attendance.findMany({
-      where: { date: { gte: from, lte: to } },
-      select: {
-        employeeId: true,
-        status: true,
-        deduction: true,
-        checkIn: true,
-        checkOut: true,
-        lateMinutes: true,
-        workingHours: true,
-        date: true,
-      },
-    })
-
+    const salaryDeductionEnabled = settingRow?.value === 'true'
     const workingDays = getWorkingDaysInMonth(year, month)
 
     const rows = employees.map((emp) => {
       const empAtt = attendances.filter((a) => a.employeeId === emp.id)
-      const row = buildMonthlyReportRow(emp, empAtt, year, month)
+      const row = buildMonthlyReportRow(emp, empAtt, year, month, salaryDeductionEnabled)
       return {
         ...row,
         // Per-day breakdown for detailed view
@@ -87,6 +91,7 @@ export async function GET(req: NextRequest) {
       monthNumber: month,
       workingDays,
       employeeCount: employees.length,
+      salaryDeductionEnabled,
       rows,
       totals,
     })

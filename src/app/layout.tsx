@@ -27,6 +27,17 @@ export const metadata: Metadata = {
     "payroll",
   ],
   authors: [{ name: "Realize Group" }],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Realize Attendance",
+  },
+  icons: {
+    icon: "/icons/icon-192x192.png",
+    apple: "/icons/icon-192x192.png",
+  },
+  themeColor: "#059669",
 };
 
 export default function RootLayout({

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   Plus, Search, UserPlus, Pencil, Trash2, Users, Loader2, CheckCircle2, Calendar, ChevronLeft, ChevronRight,
+  Key, Unlock, Lock, Copy, Eye, EyeOff, RotateCcw, ShieldAlert,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { FaceCapture } from './face-capture'
@@ -38,6 +39,10 @@ interface Employee {
   joinDate: string | null
   employmentEndDate: string | null
   createdAt: string
+  employeePinHash: string | null
+  employeeMustChangePin: boolean
+  employeePortalEnabled: boolean
+  employeeSessionVersion: number
 }
 
 interface FormState {
@@ -88,6 +93,13 @@ export function EmployeeManagement() {
   const [calendarEmployee, setCalendarEmployee] = useState<Employee | null>(null)
   const [calendarDays, setCalendarDays] = useState<CalendarDayData[]>([])
   const [calendarLoading, setCalendarLoading] = useState(false)
+
+  // PIN management state
+  const [pinDialogOpen, setPinDialogOpen] = useState(false)
+  const [pinDialogEmployee, setPinDialogEmployee] = useState<Employee | null>(null)
+  const [pinDialogAction, setPinDialogAction] = useState<'generate' | 'revoke' | 'disable' | 'enable'>('generate')
+  const [generatedPin, setGeneratedPin] = useState<string | null>(null)
+  const [pinActionLoading, setPinActionLoading] = useState(false)
   const istNow = getISTParts()
   const [calendarYear, setCalendarYear] = useState(istNow.year)
   const [calendarMonth, setCalendarMonth] = useState(istNow.month)
@@ -104,7 +116,7 @@ export function EmployeeManagement() {
       const recorded = new Map<string, string>(data.records.map((r: any) => [r.date, r.status]))
       const joinDateStr = getLocalDateString(new Date(emp.createdAt))
       const days = buildMonthCalendar(joinDateStr, year, month, recorded)
-      const detailByDate = new Map(data.records.map((r: any) => [r.date, r]))
+      const detailByDate = new Map<string, any>(data.records.map((r: any) => [r.date, r]))
       setCalendarDays(days.map((d) => ({
         ...d,
         checkIn: detailByDate.get(d.date)?.checkIn ?? null,
@@ -253,6 +265,49 @@ export function EmployeeManagement() {
     }
   }
 
+  const openPinDialog = (emp: Employee, action: 'generate' | 'revoke' | 'disable' | 'enable') => {
+    setPinDialogEmployee(emp)
+    setPinDialogAction(action)
+    setGeneratedPin(null)
+    setPinDialogOpen(true)
+  }
+
+  const handlePinAction = async () => {
+    if (!pinDialogEmployee) return
+    setPinActionLoading(true)
+    try {
+      const res = await fetch(`/api/admin/employees/${pinDialogEmployee.id}/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: pinDialogAction }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to perform action')
+        return
+      }
+      if (pinDialogAction === 'generate' && data.temporaryPin) {
+        setGeneratedPin(data.temporaryPin)
+        toast.success('Temporary PIN generated! Copy it now - it will not be shown again.')
+      } else {
+        toast.success(data.message || 'Action completed')
+        setPinDialogOpen(false)
+        load()
+      }
+    } catch {
+      toast.error('Network error')
+    } finally {
+      setPinActionLoading(false)
+    }
+  }
+
+  const copyPin = () => {
+    if (generatedPin) {
+      navigator.clipboard.writeText(generatedPin)
+      toast.success('PIN copied to clipboard')
+    }
+  }
+
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase()
     if (!q) return true
@@ -372,6 +427,32 @@ export function EmployeeManagement() {
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => openEdit(emp)}>
                             <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openPinDialog(emp, emp.employeePinHash ? 'generate' : 'generate')}
+                            title={emp.employeePinHash ? 'Reset PIN' : 'Generate PIN'}
+                          >
+                            <Key className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openPinDialog(emp, emp.employeePortalEnabled ? 'disable' : 'enable')}
+                            title={emp.employeePortalEnabled ? 'Disable Portal Access' : 'Enable Portal Access'}
+                            className={emp.employeePortalEnabled ? 'text-emerald-600 hover:text-emerald-700' : 'text-slate-500'}
+                          >
+                            {emp.employeePortalEnabled ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openPinDialog(emp, 'revoke')}
+                            title="Revoke Sessions"
+                            className="text-amber-600 hover:text-amber-700"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => remove(emp)} className="text-red-600 hover:text-red-700">
                             <Trash2 className="h-3.5 w-3.5" />
@@ -600,6 +681,109 @@ export function EmployeeManagement() {
                   <AttendanceCalendar year={calendarYear} month={calendarMonth} days={calendarDays} />
                 )}
               </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* PIN Management Dialog */}
+      <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
+        <DialogContent className="max-w-md">
+          {pinDialogEmployee && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {pinDialogAction === 'generate' && <Key className="h-5 w-5 text-emerald-600" />}
+                  {pinDialogAction === 'revoke' && <RotateCcw className="h-5 w-5 text-amber-600" />}
+                  {pinDialogAction === 'disable' && <Lock className="h-5 w-5 text-red-600" />}
+                  {pinDialogAction === 'enable' && <Unlock className="h-5 w-5 text-emerald-600" />}
+                  <span>
+                    {pinDialogAction === 'generate' && (pinDialogEmployee.employeePinHash ? 'Reset PIN' : 'Generate PIN')}
+                    {pinDialogAction === 'revoke' && 'Revoke Sessions'}
+                    {pinDialogAction === 'disable' && 'Disable Portal Access'}
+                    {pinDialogAction === 'enable' && 'Enable Portal Access'}
+                  </span>
+                </DialogTitle>
+                <DialogDescription>
+                  {pinDialogAction === 'generate' && (
+                    <>
+                      {pinDialogEmployee.employeePinHash
+                        ? 'This will generate a new temporary PIN. The employee must change it on first login.'
+                        : 'Generate a temporary PIN for the employee to log in for the first time.'}
+                    </>
+                  )}
+                  {pinDialogAction === 'revoke' && 'This will log the employee out of all active sessions.'}
+                  {pinDialogAction === 'disable' && 'The employee will not be able to log in to the portal.'}
+                  {pinDialogAction === 'enable' && 'The employee will be able to log in to the portal.'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                {generatedPin && pinDialogAction === 'generate' && (
+                  <div className="rounded-md bg-emerald-50 border border-emerald-200 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-emerald-800">Temporary PIN (show once only)</span>
+                      <Button variant="ghost" size="sm" onClick={copyPin}>
+                        <Copy className="h-4 w-4 mr-1" /> Copy
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-center gap-4 p-4 bg-white rounded border">
+                      <span className="text-3xl font-mono font-bold tracking-widest text-emerald-700 letter-spacing-[0.3em]">
+                        {generatedPin}
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={copyPin} title="Copy PIN">
+                        <Copy className="h-5 w-5" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-emerald-700 mt-2 text-center">
+                      Share this PIN with the employee securely. It will not be shown again.
+                    </p>
+                  </div>
+                )}
+
+                {!generatedPin && (
+                  <div className="space-y-2 text-sm text-slate-600">
+                    {pinDialogAction === 'revoke' && (
+                      <p>All active sessions for <strong>{pinDialogEmployee.name}</strong> will be invalidated.</p>
+                    )}
+                    {pinDialogAction === 'disable' && (
+                      <p><strong>{pinDialogEmployee.name}</strong> will not be able to access the Employee Portal.</p>
+                    )}
+                    {pinDialogAction === 'enable' && (
+                      <p><strong>{pinDialogEmployee.name}</strong> will be able to access the Employee Portal.</p>
+                    )}
+                    {pinDialogAction === 'generate' && !pinDialogEmployee.employeePinHash && (
+                      <p>A temporary 6-digit PIN will be generated for <strong>{pinDialogEmployee.name}</strong>.</p>
+                    )}
+                    {pinDialogAction === 'generate' && pinDialogEmployee.employeePinHash && (
+                      <p>A new temporary 6-digit PIN will replace the existing one for <strong>{pinDialogEmployee.name}</strong>.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setPinDialogOpen(false); setGeneratedPin(null) }}>Cancel</Button>
+                <Button
+                  onClick={handlePinAction}
+                  disabled={pinActionLoading || (pinDialogAction === 'generate' && !!generatedPin)}
+                  className={pinDialogAction === 'generate' && generatedPin ? 'opacity-50' : ''}
+                >
+                  {pinActionLoading ? (
+                    <> <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing... </> )
+                  : generatedPin && pinDialogAction === 'generate' ? (
+                    'PIN Generated - Copy & Close'
+                  ) : pinDialogAction === 'generate' ? (
+                    'Generate PIN'
+                  ) : pinDialogAction === 'revoke' ? (
+                    'Revoke Sessions'
+                  ) : pinDialogAction === 'disable' ? (
+                    'Disable Access'
+                  ) : (
+                    'Enable Access'
+                  )}
+                </Button>
+              </DialogFooter>
             </>
           )}
         </DialogContent>

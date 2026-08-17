@@ -33,6 +33,10 @@ export async function GET(req: NextRequest) {
         joinDate: true,
         employmentEndDate: true,
         createdAt: true,
+        employeePinHash: true,
+        employeeMustChangePin: true,
+        employeePortalEnabled: true,
+        employeeSessionVersion: true,
         ...(withDescriptor ? { faceDescriptor: true } : {}),
       },
     })

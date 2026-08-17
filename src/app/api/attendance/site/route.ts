@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
       absentAfterMinutes: Number(map.absentAfterMinutes || DEFAULT_SHIFT.absentAfterMinutes),
       standardWorkingHours: Number(map.standardWorkingHours || DEFAULT_SHIFT.standardWorkingHours),
       minCheckoutGapMinutes: Number(map.minCheckoutGapMinutes || DEFAULT_SHIFT.minCheckoutGapMinutes),
+      overtimeMultiplier: Number(map.overtimeMultiplier ?? DEFAULT_SHIFT.overtimeMultiplier),
     }
 
     const record = await db.attendance.upsert({

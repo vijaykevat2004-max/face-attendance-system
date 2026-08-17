@@ -20,48 +20,52 @@ model Admin {
 }
 
 model Employee {
-  id                String       @id @default(cuid())
-  employeeId        String       @unique // human-friendly e.g. EMP-001
-  name              String
-  email             String?
-  phone             String?
-  department        String?
-  position          String?
-  baseSalary        Float        @default(0) // monthly base salary in INR
-  absentDeduction   Float? // custom ₹ deducted per absent day for this employee; falls back to (baseSalary / working days in month) if not set
-  faceDescriptor    String // JSON-encoded Float32Array (128 dims)
-  faceImage         String? // base64 thumbnail of enrolled face
-  bankAccountNumber String?
-  bankIFSC          String?
-  bankAccountHolder String? // name as per bank records, may differ slightly from `name`
-  active            Boolean      @default(true)
-  joinDate          DateTime? // explicit employment start date (not createdAt)
-  employmentEndDate DateTime? // optional employment end date
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  attendances       Attendance[]
+  id                     String       @id @default(cuid())
+  employeeId             String       @unique // human-friendly e.g. EMP-001
+  name                   String
+  email                  String?
+  phone                  String?
+  department             String?
+  position               String?
+  baseSalary             Float        @default(0) // monthly base salary in INR
+  absentDeduction        Float? // custom ₹ deducted per absent day for this employee; falls back to (baseSalary / working days in month) if not set
+  faceDescriptor         String // JSON-encoded Float32Array (128 dims)
+  faceImage              String? // base64 thumbnail of enrolled face
+  bankAccountNumber      String?
+  bankIFSC               String?
+  bankAccountHolder      String? // name as per bank records, may differ slightly from `name`
+  active                 Boolean      @default(true)
+  joinDate               DateTime? // explicit employment start date (not createdAt)
+  employmentEndDate      DateTime? // optional employment end date
+  employeePinHash        String? // bcrypt hash of 6-digit PIN
+  employeeMustChangePin  Boolean      @default(true) // force PIN change on first login
+  employeePortalEnabled  Boolean      @default(false) // admin-controlled portal access
+  employeeSessionVersion Int          @default(0) // incremented to invalidate sessions on PIN reset
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  attendances            Attendance[]
 }
 
 model Attendance {
-  id           String    @id @default(cuid())
-  employeeId   String
-  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date         String    // YYYY-MM-DD (local date)
-  checkIn      DateTime?
-  checkOut     DateTime?
-  status       String    // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
-  lateMinutes  Int       @default(0)
-  workingHours Float     @default(0) // in hours, decimal
-  deduction    Float     @default(0) // rupees deducted for this day
-  note         String?
-  source       String    @default("WORKSHOP") // WORKSHOP | SITE
-  siteLat      Float?
-  siteLng      Float?
-  sitePhoto    String?   // base64 selfie captured at the site, face-verified against enrollment
-  overtimeHours  Float   @default(0) // hours of overtime worked
-  overtimePay    Float   @default(0) // rupees paid for overtime
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date          String // YYYY-MM-DD (local date)
+  checkIn       DateTime?
+  checkOut      DateTime?
+  status        String // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
+  lateMinutes   Int       @default(0)
+  workingHours  Float     @default(0) // in hours, decimal
+  deduction     Float     @default(0) // rupees deducted for this day
+  note          String?
+  source        String    @default("WORKSHOP") // WORKSHOP | SITE
+  siteLat       Float?
+  siteLng       Float?
+  sitePhoto     String? // base64 selfie captured at the site, face-verified against enrollment
+  overtimeHours Float     @default(0) // hours of overtime worked
+  overtimePay   Float     @default(0) // rupees paid for overtime
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([employeeId, date])
   @@index([date])

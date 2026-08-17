@@ -1,5 +1,12 @@
 // Salary calculation and attendance rule helpers
 
+import {
+  getEligibleWorkingDays,
+  classifyZone,
+  isRecordInValidEmploymentPeriod,
+  getMonthRange,
+} from '@/lib/attendance-statistics'
+
 export type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'HALF_DAY' | 'LEAVE'
 
 export interface LateTier {
@@ -173,6 +180,11 @@ export interface MonthlyReportRow {
   totalOvertimeHours: number
   totalOvertimePay: number
   payableSalary: number
+  eligibleDays: number
+  earnedDays: number
+  attendancePercentage: number | null
+  zone: 'GREEN' | 'BLUE' | 'RED' | 'NOT_RATED'
+  greenZoneBonus: number
 }
 
 /**
@@ -212,29 +224,83 @@ export function buildMonthlyReportRow(
   const totalOvertimeHours = attendances.reduce((s, a) => s + (a.overtimeHours || 0), 0)
   const totalOvertimePay = attendances.reduce((s, a) => s + (a.overtimePay || 0), 0)
 
+  // Get month range with cutoff date (same as attendance-statistics)
+  const monthRange = getMonthRange(`${year}-${String(month).padStart(2, '0')}`)
+  const { cutoffDate } = monthRange
+
+  // Get join date
+  const joinDate = emp.joinDate ? (typeof emp.joinDate === 'string' ? new Date(emp.joinDate) : emp.joinDate) : new Date(emp.createdAt)
+
+  // Get employee leave days
+  const employeeLeaves = new Set(attendances.filter(a => a.status === 'LEAVE').map(a => a.date))
+
+  // Calculate eligible working days (same logic as attendance-statistics but without holidays)
+  const eligibleDays = getEligibleWorkingDays(year, month, joinDate, null, new Set(), cutoffDate, employeeLeaves)
+
+  // Count present/late/half-day/absent within eligible days
+  let presentCount = 0
+  let lateCount = 0
+  let halfDayCount = 0
+  let explicitAbsentCount = 0
+  let implicitAbsentCount = 0
+
+  const recordedDates = new Set(attendances.map(a => a.date))
+  const joinDateStr = getLocalDateString(joinDate)
+  const cutoffStr = getLocalDateString(cutoffDate)
+  const daysInMonth = new Date(year, month, 0).getDate()
+
+  for (const a of attendances) {
+    const dateParts = a.date.split('-')
+    if (Number(dateParts[0]) !== year || Number(dateParts[1]) !== month) continue
+    if (!isRecordInValidEmploymentPeriod(a.date, joinDate, null)) continue
+    if (a.date > cutoffStr) continue
+    if (new Date(a.date).getDay() === 0) continue // Sunday
+
+    switch (a.status) {
+      case 'PRESENT': presentCount++; break
+      case 'LATE': lateCount++; break
+      case 'HALF_DAY': halfDayCount++; break
+      case 'ABSENT': explicitAbsentCount++; break
+    }
+  }
+
+  // Calculate implicit absences (eligible days with no attendance record)
+  for (let d = 1; d <= new Date(year, month, 0).getDate(); d++) {
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    if (dateStr > cutoffStr) continue
+    if (new Date(year, month - 1, d).getDay() === 0) continue // Sunday
+    if (joinDateStr && dateStr < joinDateStr) continue
+    if (recordedDates.has(dateStr)) continue
+    if (employeeLeaves.has(dateStr)) continue
+    implicitAbsentCount++
+  }
+
+  const absentDays = explicitAbsentCount + implicitAbsentCount
+  const earnedDays = presentCount + lateCount + halfDayCount * 0.5
+
+  // Calculate attendance percentage
+  let attendancePercentage: number | null = null
+  if (eligibleDays > 0) {
+    const raw = (earnedDays / eligibleDays) * 100
+    attendancePercentage = Math.min(raw, 100)
+  }
+
+  // Classify zone
+  const zone = classifyZone(attendancePercentage)
+
+  // GREEN zone bonus: 5% of base salary for GREEN zone
+  const greenZoneBonus = zone === 'GREEN' ? emp.baseSalary * 0.05 : 0
+
+  // Calculate deductions
   const workingDaysInMonth = getWorkingDaysInMonth(year, month)
   const dailyWage = workingDaysInMonth > 0 ? emp.baseSalary / workingDaysInMonth : 0
   const perAbsentDayRate = emp.absentDeduction ?? dailyWage
-
-  const recordedDates = new Set(attendances.map((a) => a.date))
-  const joinDate = emp.joinDate ?? emp.createdAt
-  const joinDateStr = getLocalDateString(typeof joinDate === 'string' ? new Date(joinDate) : joinDate)
-  const todayDateStr = getLocalDateString()
-  const daysInMonth = new Date(year, month, 0).getDate()
-
-  let implicitAbsentDays = 0
-  for (let d = 1; d <= daysInMonth; d++) {
-    if (new Date(year, month - 1, d).getDay() === 0) continue // Sunday
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    if (dateStr > todayDateStr || dateStr < joinDateStr) continue
-    if (!recordedDates.has(dateStr)) implicitAbsentDays++
-  }
-  const implicitDeduction = implicitAbsentDays * perAbsentDayRate
-
-  const absentDays = explicitAbsentDays + implicitAbsentDays
+  const implicitDeduction = implicitAbsentCount * perAbsentDayRate
   const rawTotalDeduction = explicitDeduction + implicitDeduction
   const totalDeduction = salaryDeductionEnabled ? rawTotalDeduction : 0
-  const payableSalary = Math.max(0, emp.baseSalary - totalDeduction + totalOvertimePay)
+
+  // Payable = Base - Deduction + Overtime + Green Bonus
+  const payableSalary = Math.max(0, emp.baseSalary - totalDeduction + totalOvertimePay + greenZoneBonus)
 
   return {
     employeeId: emp.id,
@@ -242,15 +308,20 @@ export function buildMonthlyReportRow(
     name: emp.name,
     department: emp.department,
     baseSalary: emp.baseSalary,
-    presentDays,
-    lateDays,
-    halfDays,
+    presentDays: presentCount,
+    lateDays: lateCount,
+    halfDays: halfDayCount,
     absentDays,
     leaveDays,
     totalDeduction,
     totalOvertimeHours,
     totalOvertimePay,
     payableSalary,
+    eligibleDays,
+    earnedDays,
+    attendancePercentage,
+    zone,
+    greenZoneBonus,
   }
 }
 

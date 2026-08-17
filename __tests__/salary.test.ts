@@ -152,7 +152,9 @@ describe('Salary deduction toggle behavior', () => {
       atts, year, month, true,
     )
     expect(row.totalDeduction).toBe(0)
-    expect(row.payableSalary).toBe(baseSalary)
+    // With 100% attendance, employee is in GREEN zone and gets 5% bonus
+    const greenZoneBonus = baseSalary * 0.05
+    expect(row.payableSalary).toBe(baseSalary + greenZoneBonus)
   })
 
   it('When toggle is ON, explicit LATE deduction reduces payable', () => {

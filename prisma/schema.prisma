@@ -43,25 +43,25 @@ model Employee {
 }
 
 model Attendance {
-  id            String    @id @default(cuid())
-  employeeId    String
-  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date          String // YYYY-MM-DD (local date)
-  checkIn       DateTime?
-  checkOut      DateTime?
-  status        String // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
-  lateMinutes   Int       @default(0)
-  workingHours  Float     @default(0) // in hours, decimal
-  deduction     Float     @default(0) // rupees deducted for this day
-  note          String?
-  source        String    @default("WORKSHOP") // WORKSHOP | SITE
-  siteLat       Float?
-  siteLng       Float?
-  sitePhoto     String? // base64 selfie captured at the site, face-verified against enrollment
-  overtimeHours Float     @default(0) // hours of overtime worked
-  overtimePay   Float     @default(0) // rupees paid for overtime
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  employeeId   String
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date         String    // YYYY-MM-DD (local date)
+  checkIn      DateTime?
+  checkOut     DateTime?
+  status       String    // PRESENT | LATE | ABSENT | HALF_DAY | LEAVE
+  lateMinutes  Int       @default(0)
+  workingHours Float     @default(0) // in hours, decimal
+  deduction    Float     @default(0) // rupees deducted for this day
+  note         String?
+  source       String    @default("WORKSHOP") // WORKSHOP | SITE
+  siteLat      Float?
+  siteLng      Float?
+  sitePhoto    String?   // base64 selfie captured at the site, face-verified against enrollment
+  overtimeHours  Float   @default(0) // hours of overtime worked
+  overtimePay    Float   @default(0) // rupees paid for overtime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([employeeId, date])
   @@index([date])

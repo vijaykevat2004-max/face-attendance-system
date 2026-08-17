@@ -11,11 +11,14 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import {
-  Plus, Search, UserPlus, Pencil, Trash2, Users, Loader2, CheckCircle2,
+  Plus, Search, UserPlus, Pencil, Trash2, Users, Loader2, CheckCircle2, Calendar, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { FaceCapture } from './face-capture'
-import { formatCurrency, formatDate } from '@/lib/salary'
+import { AttendanceCalendar, type CalendarDayData } from './attendance-calendar'
+import { formatCurrency, formatDate, getISTParts, getLocalDateString, buildMonthCalendar } from '@/lib/salary'
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 interface Employee {
   id: string
@@ -80,6 +83,59 @@ export function EmployeeManagement() {
   const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null)
   const [faceImage, setFaceImage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [calendarEmployee, setCalendarEmployee] = useState<Employee | null>(null)
+  const [calendarDays, setCalendarDays] = useState<CalendarDayData[]>([])
+  const [calendarLoading, setCalendarLoading] = useState(false)
+  const istNow = getISTParts()
+  const [calendarYear, setCalendarYear] = useState(istNow.year)
+  const [calendarMonth, setCalendarMonth] = useState(istNow.month)
+
+  const loadCalendar = async (emp: Employee, year: number, month: number) => {
+    setCalendarLoading(true)
+    try {
+      const from = `${year}-${String(month).padStart(2, '0')}-01`
+      const lastDay = new Date(year, month, 0).getDate()
+      const to = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+      const res = await fetch(`/api/attendance?employeeId=${emp.id}&from=${from}&to=${to}`)
+      if (!res.ok) throw new Error('failed')
+      const data = await res.json()
+      const recorded = new Map<string, string>(data.records.map((r: any) => [r.date, r.status]))
+      const joinDateStr = getLocalDateString(new Date(emp.createdAt))
+      const days = buildMonthCalendar(joinDateStr, year, month, recorded)
+      const detailByDate = new Map(data.records.map((r: any) => [r.date, r]))
+      setCalendarDays(days.map((d) => ({
+        ...d,
+        checkIn: detailByDate.get(d.date)?.checkIn ?? null,
+        checkOut: detailByDate.get(d.date)?.checkOut ?? null,
+        overtimeHours: detailByDate.get(d.date)?.overtimeHours ?? 0,
+      })))
+    } catch (e) {
+      toast.error('Failed to load calendar')
+    } finally {
+      setCalendarLoading(false)
+    }
+  }
+
+  const openCalendar = (emp: Employee) => {
+    setCalendarEmployee(emp)
+    setCalendarYear(istNow.year)
+    setCalendarMonth(istNow.month)
+    setCalendarOpen(true)
+    loadCalendar(emp, istNow.year, istNow.month)
+  }
+
+  const changeCalendarMonth = (delta: number) => {
+    if (!calendarEmployee) return
+    let newMonth = calendarMonth + delta
+    let newYear = calendarYear
+    if (newMonth < 1) { newMonth = 12; newYear -= 1 }
+    if (newMonth > 12) { newMonth = 1; newYear += 1 }
+    setCalendarYear(newYear)
+    setCalendarMonth(newMonth)
+    loadCalendar(calendarEmployee, newYear, newMonth)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -311,6 +367,9 @@ export function EmployeeManagement() {
                       </td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => openCalendar(emp)} title="View attendance calendar">
+                            <Calendar className="h-3.5 w-3.5" />
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => openEdit(emp)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -514,6 +573,35 @@ export function EmployeeManagement() {
               {editingId ? 'Save Changes' : 'Enroll Employee'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={calendarOpen} onOpenChange={setCalendarOpen}>
+        <DialogContent className="max-w-md">
+          {calendarEmployee && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{calendarEmployee.name}</DialogTitle>
+                <DialogDescription>{calendarEmployee.employeeId} · {calendarEmployee.department || 'No department'}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={() => changeCalendarMonth(-1)} disabled={calendarLoading}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <p className="font-medium text-sm">{MONTH_NAMES[calendarMonth - 1]} {calendarYear}</p>
+                  <Button variant="outline" size="sm" onClick={() => changeCalendarMonth(1)} disabled={calendarLoading}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                {calendarLoading ? (
+                  <div className="py-10 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600" /></div>
+                ) : (
+                  <AttendanceCalendar year={calendarYear} month={calendarMonth} days={calendarDays} />
+                )}
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

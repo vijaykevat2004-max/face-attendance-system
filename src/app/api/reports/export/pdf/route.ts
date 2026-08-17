@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       }),
       db.attendance.findMany({
         where: { date: { gte: from, lte: to } },
-        select: { employeeId: true, date: true, status: true, deduction: true },
+        select: { employeeId: true, date: true, status: true, deduction: true, overtimeHours: true, overtimePay: true },
       }),
       db.setting.findMany(),
     ])
@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
     const totals = {
       payrollBase: rows.reduce((s, r) => s + r.baseSalary, 0),
       totalDeduction: rows.reduce((s, r) => s + r.totalDeduction, 0),
+      totalOvertimePay: rows.reduce((s, r) => s + r.totalOvertimePay, 0),
       payable: rows.reduce((s, r) => s + r.payableSalary, 0),
     }
 
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
     // Table
     autoTable(doc, {
       startY: 95,
-      head: [['Emp ID', 'Name', 'Dept', 'Base', 'Present', 'Late', 'Half', 'Absent', 'Deduction', 'Payable']],
+      head: [['Emp ID', 'Name', 'Dept', 'Base', 'Present', 'Late', 'Half', 'Absent', 'Deduction', 'Overtime', 'Payable']],
       body: rows.map((r) => [
         r.employeeCode,
         r.name,
@@ -94,12 +95,14 @@ export async function GET(req: NextRequest) {
         r.halfDays,
         r.absentDays,
         formatCurrency(r.totalDeduction),
+        formatCurrency(r.totalOvertimePay),
         formatCurrency(r.payableSalary),
       ]),
       foot: [[
         '', 'TOTAL', '', formatCurrency(totals.payrollBase),
         '', '', '', '',
         formatCurrency(totals.totalDeduction),
+        formatCurrency(totals.totalOvertimePay),
         formatCurrency(totals.payable),
       ]],
       styles: { fontSize: 9, cellPadding: 4 },
@@ -113,6 +116,7 @@ export async function GET(req: NextRequest) {
         7: { halign: 'center' },
         8: { halign: 'right' },
         9: { halign: 'right' },
+        10: { halign: 'right' },
       },
       theme: 'striped',
     })

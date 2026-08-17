@@ -95,8 +95,8 @@ export function AppShell() {
                 <ScanFace className="h-4 w-4" />
               </div>
               <div>
-                <p className="font-semibold text-sm leading-tight">Face Attendance</p>
-                <p className="text-xs text-slate-500 leading-tight">AI Recognition & Payroll</p>
+                <p className="font-semibold text-sm leading-tight">Realize Group</p>
+                <p className="text-xs text-slate-500 leading-tight">Attendance System</p>
               </div>
             </div>
           </div>
@@ -177,7 +177,7 @@ export function AppShell() {
       {/* Footer */}
       <footer className="mt-auto border-t border-slate-200 bg-white">
         <div className="px-4 lg:px-6 py-3 text-xs text-slate-500 flex items-center justify-between flex-wrap gap-2">
-          <p>© {new Date().getFullYear()} Face Attendance System — AI-powered attendance & payroll</p>
+          <p>© {new Date().getFullYear()} Realize Group Attendance System — AI-powered attendance & payroll</p>
           <p className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             Built with Next.js, face-api.js & Prisma

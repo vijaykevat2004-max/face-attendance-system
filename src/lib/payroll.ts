@@ -45,7 +45,7 @@ export async function generatePayrollForMonth(month: string): Promise<GeneratePa
   })
   const attendances = await db.attendance.findMany({
     where: { date: { gte: from, lte: to } },
-    select: { employeeId: true, date: true, status: true, deduction: true },
+    select: { employeeId: true, date: true, status: true, deduction: true, overtimeHours: true, overtimePay: true },
   })
 
   const lineItems = employees.map((emp) => {
@@ -61,6 +61,7 @@ export async function generatePayrollForMonth(month: string): Promise<GeneratePa
       halfDays: row.halfDays,
       absentDays: row.absentDays,
       totalDeduction: row.totalDeduction,
+      totalOvertimePay: row.totalOvertimePay,
       netPayable: row.payableSalary,
       bankAccountNumber: emp.bankAccountNumber,
       bankIFSC: emp.bankIFSC,

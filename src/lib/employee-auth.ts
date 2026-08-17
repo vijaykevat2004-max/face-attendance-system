@@ -140,6 +140,7 @@ export async function resetPinByAdmin(employeeId: string): Promise<string> {
     data: {
       employeePinHash: hash,
       employeeMustChangePin: true,
+      employeePortalEnabled: true,
       employeeSessionVersion: { increment: 1 },
     },
   })

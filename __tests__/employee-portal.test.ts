@@ -183,6 +183,7 @@ describe('Employee Auth Library', () => {
         data: {
           employeePinHash: 'new-hash',
           employeeMustChangePin: true,
+          employeePortalEnabled: true,
           employeeSessionVersion: { increment: 1 },
         },
       })
